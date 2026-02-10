@@ -5,6 +5,12 @@
 # Note: pbx3cagi is needed for dpkg, so not ignored
 sarkhpe
 
+# Debian package build output (regenerate on Linux builder)
+pbx3cagi-1.0.0/build/
+
+# Pre-built binaries per arch (regenerate on Linux builder)
+pbx3cagi-1.0.0/images/
+
 # Build artifacts
 *.a
 *.so
