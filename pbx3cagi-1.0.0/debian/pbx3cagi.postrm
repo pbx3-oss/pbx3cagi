@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+	if [ -L /usr/share/asterisk/agi-bin/pbx3cagi ]; then
+		rm -f /usr/share/asterisk/agi-bin/pbx3cagi
+	fi
+fi
+
+#DEBHELPER#

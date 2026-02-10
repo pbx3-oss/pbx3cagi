@@ -1,6 +1,7 @@
 #!/usr/bin/make -f
 
 PACKAGE=$(shell dh_listpackages)
+ARCH := $(shell dpkg-architecture -qDEB_HOST_ARCH 2>/dev/null)
 
 build:
 	dh_testdir
@@ -20,9 +21,9 @@ binary-arch: build
 	dh_prep
 	dh_installdirs
 
-	# Install binary to Asterisk AGI bin
+	# Install architecture-specific binary; postinst will symlink pbx3cagi -> pbx3cagi.$(ARCH)
 	install -d debian/$(PACKAGE)/usr/share/asterisk/agi-bin
-	install -m 755 csource/pbx3cagi debian/$(PACKAGE)/usr/share/asterisk/agi-bin/
+	install -m 755 csource/pbx3cagi debian/$(PACKAGE)/usr/share/asterisk/agi-bin/pbx3cagi.$(ARCH)
 
 	dh_installdocs
 	dh_installchangelogs

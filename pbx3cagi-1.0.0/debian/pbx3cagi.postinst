@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "configure" ]; then
+	arch=$(dpkg --print-architecture)
+	if [ -f "/usr/share/asterisk/agi-bin/pbx3cagi.$arch" ]; then
+		ln -sf pbx3cagi.$arch /usr/share/asterisk/agi-bin/pbx3cagi
+	fi
+fi
+
+#DEBHELPER#
