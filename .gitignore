@@ -2,7 +2,7 @@
 *.o
 
 # Binary executables (built from source)
-pbx3cagi
+# Note: pbx3cagi is needed for dpkg, so not ignored
 sarkhpe
 
 # Build artifacts
