@@ -82,7 +82,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <ctype.h>
-#include <bsd/string.h>
+#include "bsd_compat.h"
 
 #include "cagi.h"
 

@@ -23,7 +23,7 @@
 #include <unistd.h>
 #include "pbx3cagi.h"
 #include "cagi.h"
-#include <bsd/string.h>
+#include "bsd_compat.h"
 #include <sys/wait.h>
 #include "sqlite3.h"
 
@@ -3194,7 +3194,7 @@ char *sqlQuery(char *query)
    Ast 1.6/1.8+ - probabaly won't work with Ast 1.4
 
 EXAMPLE CALL
-    exten => _X.,1,AGI(sxhpe,OutQmt,number,,Qname,agent)
+    exten => _X.,1,AGI(pbx3cagi,OutQmt,number,,Qname,agent)
 
 PARAMS
           PARM_KEY 	number -> number to Dial
