@@ -1,0 +1,25 @@
+Format: 1.8
+Date: Tue, 10 Feb 2026 19:00:00 +0000
+Source: pbx3cagi
+Binary: pbx3cagi
+Architecture: arm64
+Version: 1.0.0-1
+Distribution: UNRELEASED
+Urgency: low
+Maintainer: root <root@wheezy224.aelintra.com>
+Changed-By: KoKoKraft <admin@aelintra.com>
+Description:
+ pbx3cagi   - pbx3cagi
+Changes:
+ pbx3cagi (1.0.0-1) UNRELEASED; urgency=low
+ .
+   * Initial package for pbx3 AGI engine
+Checksums-Sha1:
+ d53740807e09039fb1c0edee1bfc126d6b40c330 3957 pbx3cagi_1.0.0-1_arm64.buildinfo
+ 781bf20c8f290b3fa9410ff02642109b328176e6 358892 pbx3cagi_1.0.0-1_arm64.deb
+Checksums-Sha256:
+ 5e5ea0e536a3dc608ebe574a2977e69c45203673ff4d81227a87f034ddfdf2f4 3957 pbx3cagi_1.0.0-1_arm64.buildinfo
+ fb7255329251fc3820f1a6aba84b9be5b65ca9f3f9f70eab8debe78b138d5b36 358892 pbx3cagi_1.0.0-1_arm64.deb
+Files:
+ 21c070e34d36e817445a7844ea2afc03 3957 network extra pbx3cagi_1.0.0-1_arm64.buildinfo
+ cd568f175b74a17250f2e73268d77ba1 358892 network extra pbx3cagi_1.0.0-1_arm64.deb

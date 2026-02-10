@@ -1,0 +1,10 @@
+Package: pbx3cagi
+Version: 1.0.0-1
+Architecture: arm64
+Maintainer: root <root@wheezy224.aelintra.com>
+Installed-Size: 905
+Depends: asterisk
+Section: network
+Priority: extra
+Description: pbx3cagi
+ pbx3cagi switching Engine.
