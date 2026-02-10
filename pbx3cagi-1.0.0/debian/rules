@@ -1,0 +1,38 @@
+#!/usr/bin/make -f
+
+PACKAGE=$(shell dh_listpackages)
+
+build:
+	dh_testdir
+	$(MAKE) -C csource
+
+clean:
+	dh_testdir
+	dh_testroot
+	$(MAKE) -C csource clean
+	dh_clean -d
+
+binary-indep: build
+
+binary-arch: build
+	dh_testdir
+	dh_testroot
+	dh_prep
+	dh_installdirs
+
+	# Install binary to Asterisk AGI bin
+	install -d debian/$(PACKAGE)/usr/share/asterisk/agi-bin
+	install -m 755 csource/pbx3cagi debian/$(PACKAGE)/usr/share/asterisk/agi-bin/
+
+	dh_installdocs
+	dh_installchangelogs
+
+	dh_compress
+	dh_makeshlibs
+	dh_installdeb
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+binary: binary-indep binary-arch
+.PHONY: build clean binary-indep binary-arch binary
