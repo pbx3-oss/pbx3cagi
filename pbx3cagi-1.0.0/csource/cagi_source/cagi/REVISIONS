@@ -1,0 +1,48 @@
+*********************************
+V.7 - Changes
+*********************************
+Nov 13, 2006 - Fixed bug in AGITool_sendcmd(). Was loosing last char in data field.
+
+*********************************
+V.6 - Changes
+*********************************
+Sep 06, 2006 - Made fastcagi support command line arguments. Also using read rather than fgets so
+					it won't drain the stdin buffer.
+				 - CAGI now checks return values of fgets in Init in case stdin pipe is lost.
+
+*********************************
+V.5 - Changes
+*********************************
+Sep 04, 2006 - Made AGITool_ListAddItem() use malloc instead of static buffer. Allow longer variable name/value
+				 - Added fastcagi that serves up AGI apps for fast AGI execution. It will serve AGI's written in any 
+				 	language as long as it is executable via exec().
+					
+*********************************
+V.4 - Changes
+*********************************
+Mar 10, 2006 - Fixed bug with sendcmd where fgets would get a NULL and strlen(str) would core. would only 
+               happen if program tried to stick around after SIGHUP. fgets() returned NULL cause stdin was gone
+             - Also implemented some EXEC functions for SetLanguage, Goto, and AbsoluteTimeout.
+
+*********************************
+V.3 - Changes
+*********************************
+Oct 03, 2005 - Fixed bug with send_cmd. Data is now properly filled. 
+             - Added raw field to result struct to get raw data send by asterisk.
+             - Added AGITool_get_variable2().
+
+Sept 29,2005 - Added AGITool_exec_dial(). Thanks to Raymond Chen for working on and testing.
+
+*********************************
+V.2 - Changes since last release.
+*********************************
+
+Jul 7 - Added some #defines for spool and temp dir's that were in phpagi. Nice to have
+      - Added a check for null in strim. Anything that stops core dumps. not likely, but good to check.
+
+Jun 5 - Changed the command AUTOHANGUP to "SET AUTOHANGUP".  I am not sure if I messed this up, or if it just changed.  hope it works
+Apr 14 - Changed License to LGPL.  Not sure why, people just like it better
+
+**********************************
+V.1 - Initial checkin
+**********************************

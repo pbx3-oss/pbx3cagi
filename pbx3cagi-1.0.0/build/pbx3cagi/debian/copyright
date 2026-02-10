@@ -1,0 +1,25 @@
+This package was debianized by the alien program by converting
+a binary .rpm package on Tue, 23 Oct 2012 00:15:52 +0100
+
+Copyright: GPL
+
+Information from the binary package:
+Name        : pbx3cagi-core
+Version     : 1.0.0
+Release     : 1
+Architecture: noarch
+Install Date: (not installed)
+Group       : Networking/Daemons
+Size        : 15977851
+License     : GPL
+Signature   : (none)
+Source RPM  : pbx3cagi-0.0.0-1.src.rpm
+Build Date  : Tue 10 Feb 2026 09:01:07 BST
+Build Host  : sam.aelintra.local
+Relocations : (not relocatable)
+Packager    : KoKo  <admin@aelintra.com>
+Vendor      : Aelintra Telecom Limited
+Summary     : PBX3 distributed PBX
+Description :
+PBX3  Admin and backend code to configure and build Asterisk
+  dialplans on the fly.

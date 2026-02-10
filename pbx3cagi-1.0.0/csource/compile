@@ -1,0 +1,1 @@
+gcc pbx3cagi.c cagi.c sqlite3.c -o pbx3cagi -pthread -ldl -lbsd

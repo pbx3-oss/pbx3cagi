@@ -1,0 +1,110 @@
+sailhpe (10.0.0-1) UNRELEASED; urgency=low
+
+  * initial runner mule for sipxtra
+  
+ -- KoKoKraft <admin@aelintra.com>  Sun, 7 May 2024 19:00:00 +0000
+
+sailhpe (7.0.0-11) UNRELEASED; urgency=low
+
+  * changes for the purekey version
+  * remove special treatment of objects in the default tenant
+
+ -- CoCoSoft <admin@aelintra.com>  Sun, 20 Jun 2021 19:00:00 +0000
+
+sailhpe (7.0.0-10) UNRELEASED; urgency=low
+
+  * checks AstDB for OCLO set by BLF in tenant
+
+ -- CoCoSoft <admin@aelintra.com>  Wed, 07 Mar 2021 19:00:00 +0000
+
+sailhpe (7.0.0-9) UNRELEASED; urgency=low
+
+  * committed
+  * Fixed symlink error in build chain
+
+ -- CoCoSoft <admin@aelintra.com>  Sun, 27 Dec 2020 19:00:00 +0000
+
+sailhpe (7.0.0-8) UNRELEASED; urgency=low
+
+  * committed
+  * Made tenant CLID dependent upon whether the call is local.   Forwarded
+    external calls will be left alone. Brought forward from 6.0.1.
+
+ -- CoCoSoft <admin@aelintra.com>  Sun, 30 Aug 2020 19:00:00 +0000
+
+sailhpe (7.0.0-7) UNRELEASED; urgency=low
+
+  * committed
+  * fix error in CLIP processing.  It was using given clid to do lookups instead of using chanId
+
+ -- CoCoSoft <admin@aelintra.com>  Wed, 16 Oct 2019 19:00:00 +0000
+
+sailhpe (7.0.0-6) UNRELEASED; urgency=low
+
+  * committed
+  * changes to IVR for full keys
+
+ -- CoCoSoft <admin@aelintra.com>  Sun, 28 Apr 2019 19:00:00 +0000
+
+sailhpe (7.0.0-5) UNRELEASED; urgency=low
+
+  * committed
+  * cleaned up minor star features
+  * system now works on 3 and 4 digit CLI but 5/6 digit SIP ID
+
+ -- CoCoSoft <admin@aelintra.com>  Tue, 23 Apr 2019 19:00:00 +0000
+
+sailhpe (7.0.0-4) UNRELEASED; urgency=low
+
+  * committed
+  * changes for 7.0 - long extension numbers (5 or 6 digits)
+  * implemented strl from BSD
+  * *5X* functions all moved back to dialplan
+  * far fewer I/Os pre execution
+  * One execution of the AGI per call leg
+  * First attempt at a useable out
+
+ -- CoCoSoft <admin@aelintra.com>  Sun, 7 Apr 2019 19:00:00 +0000
+
+sailhpe (7.0.0-1) UNRELEASED; urgency=low
+
+  * uncommitted
+  * changes for 7.0 - long extension numbers
+  * Not built properly yet.  Just in source/compile
+
+ -- CoCoSoft <admin@aelintra.com>  Thu, 7 Feb 2019 19:00:00 +0000
+
+sailhpe (6.0.0-2) UNRELEASED; urgency=low
+
+  * uncommitted
+  * cleans up ring groups and hunt groups. When the target is empty, no dial attempt is made.
+  * the passed number format from extensions.conf has changed from space delimited to ampersand delimited
+  * MUST be installed with sark 6.0.1-40 or higher
+  * added switchable transfer comfort message.  Switchable in Globals.
+  * Codebase moved from SVN to GiT
+
+ -- CoCoSoft <admin@aelintra.com>  Sat, 16 Feb 2019 19:00:00 +0000
+
+sailhpe (6.0.0-1) UNRELEASED; urgency=low
+
+  * uncommitted
+  * adds tenant (cluster) callerid to CLID cascade
+
+ -- CoCoSoft <admin@aelintra.com>  Wed, 12 Jan 2019 19:00:00 +0000
+
+sailhpe (5.0.0-3) UNRELEASED; urgency=low
+
+  * svn commit r52
+  * uses database driven dial params for callgroups
+  * fixes build error in amd64
+
+ -- CoCoSoft <admin@aelintra.com>  Fri, 29 Apr 2016 19:00:00 +0000
+
+sailhpe (5.0.0-2) UNRELEASED; urgency=low
+
+  * svn commit r49
+  * second 5.0 build
+  * fixes build error in amd64 
+
+ -- CoCoSoft <admin@aelintra.com>  Wed, 16 Mar 2016 19:00:00 +0000
+

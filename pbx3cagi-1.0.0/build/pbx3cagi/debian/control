@@ -1,0 +1,10 @@
+Source: pbx3cagi
+Section: network
+Priority: extra
+Maintainer: root <root@wheezy224.aelintra.com>
+
+Package: pbx3cagi
+Architecture: any
+Depends: ${misc:Depends}, asterisk
+Description: pbx3cagi
+ pbx3cagi switching Engine.
