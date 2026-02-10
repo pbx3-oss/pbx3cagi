@@ -73,7 +73,7 @@
 //        initial checkin of CAGI. Most needed features are implemented.
 //
 
-
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
