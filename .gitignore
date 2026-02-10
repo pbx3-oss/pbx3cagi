@@ -1,0 +1,25 @@
+# Object files (intermediate build artifacts)
+*.o
+
+# Binary executables (built from source)
+pbx3cagi
+sarkhpe
+
+# Build artifacts
+*.a
+*.so
+*.dylib
+
+# Debug files
+*.dSYM/
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
