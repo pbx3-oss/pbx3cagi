@@ -298,7 +298,7 @@ int AGITool_sendcmd(AGI_TOOLS *tool, AGI_CMD_RESULT *res, char *command, ...)
 		if (strchr(str, '(')) {
 			if (strchr(str, ')')) {
 				int dlen=strchr(str, ')')-strchr(str,'(');
-				if (dlen>sizeof(res->data)) dlen=sizeof(res->data);
+				if (dlen > (int)sizeof(res->data)) dlen = (int)sizeof(res->data);
 				strlcpy(res->data, strchr(str,'(')+1, dlen);
 			} else {
 				strlcpy(res->data, strchr(str,'(')+1, sizeof(res->data));

@@ -14,6 +14,7 @@
  * 
  */
 
+#include <ctype.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,7 +66,6 @@ int myargc;             // numargs
 int switchdig;          // function number
 int callee_is_local = FALSE;
 int caller_is_local = FALSE;
-int caller_is_local_ext = FALSE;
 int rdnis_is_local = FALSE;
 int rdnis_is_set = FALSE;
 
@@ -123,7 +123,6 @@ int main(int argc, char **argv)
         {"OutTrunk", "OutRoute", "", "",
          "InCall", "Inbound", "Dial", "", "IVR", "", "OutQmt"};
     int i = 0;
-    char relation[32] = {'\0'};
 
     myargv = argv; // agi srgs
     myargc = argc; // agi arg count
@@ -147,26 +146,29 @@ int main(int argc, char **argv)
     strlcpy(channel, AGITool_ListGetVal(agi.agi_vars, "agi_channel"), sizeof(channel));
 
 
-	DBQuery("master_xref", "pkey", callerid, "relation");	   	
-	strcpy(relation, rescols[0]); 
+	
+    if (isdigit(callerid[0])) {
+        if (strlen(callerid) < 6) {
+            caller_is_local = TRUE;
+        }
+        else {
+            if (strlen(callerid) == 8) {
+                caller_is_local = TRUE;
+            }
+        }
+    }
 
-	if (strcmp(relation,"")) {	
-		if (!strcmp(relation,"IPphone")) {
-			caller_is_local_ext = TRUE;
-		}
-		if (!strcmp(relation,"IPphone") || !strcmp(relation,"queue")) {
-			caller_is_local = TRUE;	
-		}			
-	}
+    if (isdigit(extension[0])) {
+        if (strlen(extension) < 6) {
+            callee_is_local = TRUE;
+        }
+        else {
+            if (strlen(extension) == 8) {
+                callee_is_local = TRUE;
+            }
+        }
+    }
 
-	DBQuery("master_xref", "pkey", extension, "relation");	   	
-	strcpy(relation, rescols[0]); 
-
-	if (strcmp(relation,"")) {		
-		if (!strcmp(relation,"IPphone") || !strcmp(relation,"speed")) {
-			callee_is_local = TRUE;
-		}	
-	}
 	
 	if (strcmp(rdnis, "unknown")) { 
 		if (strcmp(DBQuery("IPphone", "pkey", rdnis, "pkey"),"")) {
@@ -263,7 +265,7 @@ int main(int argc, char **argv)
     {
 
     case 1:
-        OutTrunk();
+        OutTrunk(PARM_KEY);
         break;
     case 2:
         OutRoute();
@@ -294,7 +296,7 @@ int main(int argc, char **argv)
         break;
 */
     case 9:
-        IVR();      //IVR menus
+        IVR(PARM_KEY);      //IVR menus
         break;
 /**
     case 10:
@@ -367,34 +369,7 @@ int main(int argc, char **argv)
     case 39:
         CFToggle();
         break;
-/*        
-    case 40:    // - no longer supported 
-        Page();
-        break;
-  Old PVU codes no longer used
-    case 41:
-        CFVMailSet();
-        break;
-    case 42:
-        CFVMailSet();
-        break;
-+/ 
-        //
-        //  ALL *5X* codes have been moved into the main dialplan.
-        //  They are all direct asterisk calls so there was nothing
-        //  to be gained from loading the AGI to deal with them
-        //
-        //    DO NOT USE *5X* Codes without checking extensions.conf
-        //
 
-    case 60:
-        RecGreet();
-        break;
-        /* *61* has moved into extensions.conf
-                case 61:
-                    PlayGreet();
-                    break;
-        */
     case 63:
         AgentPause();
         break;
@@ -506,7 +481,7 @@ void SetCluster()
     // Can we do a cluster lookup in trunks?
     if (switchdig == 1 || switchdig == 4 || switchdig == 6)
     {
-        strlcpy(myCluster, DBQuery("lineIO", "pkey", PARM_KEY, "cluster"), sizeof(myCluster));
+        strlcpy(myCluster, DBQuery("trunks", "pkey", PARM_KEY, "cluster"), sizeof(myCluster));
         if (strcmp(myCluster, ""))
         {
             strlcat(setcdrcmd, myCluster, sizeof(setcdrcmd));
@@ -526,7 +501,7 @@ void SetCluster()
 
     // OK - it's from outside so we need to look at the channel	to identify the DDI or trunk
 
-    strlcpy(myCluster, DBQuery("lineIO", "pkey", chanId, "cluster"), sizeof(myCluster));
+    strlcpy(myCluster, DBQuery("trunks", "pkey", chanId, "cluster"), sizeof(myCluster));
     if (strcmp(myCluster, ""))
     {
         strlcat(setcdrcmd, myCluster, sizeof(setcdrcmd));
@@ -607,7 +582,7 @@ char *GetExt(char *number)
     int i;
 
     strlcpy(tmp, number, sizeof(tmp));
-    for (i = 0; i < (strlen(tmp) - 4); i++)
+    for (i = 0; i < (int)(strlen(tmp) - 4); i++)
     {
         ext[i] = tmp[i + 4];
     }
@@ -667,7 +642,7 @@ char *Mangle(char *preSel, char *transformList, char *data)
             // if the transform matches shift the operand to the left to
             // remove transform and then cat to right transform
             len = strlen(left);
-            for (k = 0; k < strlen(operand); k++)
+            for (k = 0; k < (int)strlen(operand); k++)
             {
                 operand[k] = operand[k + len];
             }
@@ -1125,9 +1100,6 @@ void OutRoute()
     char clusterCount[64] = {'\0'};
     char clusterAbstimeout[16] = {'\0'};
     char extenAbstimeout[16] = {'\0'};
-    //    char rgrpCluster[MAX_CLUSTER_LEN] = {'\0'};
-    char carriertype[12] = {'\0'};
-    char carrier[12] = {'\0'};
     char beep[4] = {'\0'};
     char busy[4] = {'\0'};
     char congested[4] = {'\0'};
@@ -1169,7 +1141,7 @@ void OutRoute()
      * ...and check if the exten is barred (extenAbstimeout=0)
      *
      */
-    if (caller_is_local_ext)
+    if (caller_is_local)
     {
         snprintf(myQuery, sizeof(myQuery), "SELECT abstimeout from ipphone WHERE pkey='%s' AND cluster='%s'", extension, myCluster);
         sqlQuery(myQuery);
@@ -1258,19 +1230,13 @@ void OutRoute()
      *
      */
     for (i = 0; i < 3; i++)
-    {
-        DBQuery("lineIO", "pkey", path[last], "carrier,active");
-        strlcpy(carrier, rescols[0], sizeof(carrier));
-        strlcpy(active, rescols[1], sizeof(active));
-
-        DBQuery("Carrier", "pkey", carrier, "carriertype,technology");
-        strlcpy(carriertype, rescols[0], sizeof(carriertype));
-        strlcpy(technology, rescols[1], sizeof(technology));
-
+    {       
+        strlcpy(active, DBQuery("trunks", "pkey", path[last], "active"), sizeof(active));
         if (!strcmp(active, "YES"))
         {
             if (!strncmp(strategy, "balance", 7))
             {
+// GLOBAL is the global call counter
                 snprintf(setlast, sizeof(setlast), "GLOBAL(%s)=%d", PARM_KEY, last);
                 AGITool_exec(&agi, &res, "Set", setlast);
             }
@@ -1339,7 +1305,7 @@ void OutRoute()
 }
 
 
-void OutTrunk()
+void OutTrunk(char *key)
 {
 
     DebugFunctionTrace(__FUNCTION__);
@@ -1347,20 +1313,19 @@ void OutTrunk()
     char busy[4] = {'\0'};
     char congested[4] = {'\0'};
     char active[4] = {'\0'};
-    char technology[64] = {'\0'};
+
 
     AGITool_get_variable(&agi, &res, "PLAYBUSY");
     strlcpy(busy, res.data, sizeof(busy));
     AGITool_get_variable(&agi, &res, "PLAYCONGESTED");
     strlcpy(congested, res.data, sizeof(congested));
 
-    DBQuery("lineIO", "pkey", PARM_KEY, "active,technology");
-    strlcpy(active, rescols[0], sizeof(active));
-    strlcpy(technology, rescols[1], sizeof(technology));
+    strlcpy(active, DBQuery("trunks", "pkey", PARM_KEY, "active"), sizeof(active));
+
 
     if (!strcmp(active, "YES"))
     {
-        OutVoip();
+        OutVoip(key);
         AGITool_get_variable(&agi, &res, "DIALSTATUS");
         if (!strcmp(res.data, "ANSWER"))
         {
@@ -1396,14 +1361,12 @@ void OutTrunk()
     }
 }
 
-void OutVoip()
+void OutVoip(char *key)
 {
 
     DebugFunctionTrace(__FUNCTION__);
 
     char dialString[MAX_DIALSTR_LEN] = {'\0'};
-    char carrier[128] = {'\0'};
-    char carriertype[32] = {'\0'};
     char technology[128] = {'\0'};
     char username[128] = {'\0'};
     char voipnum[128] = {'\0'};
@@ -1419,23 +1382,19 @@ void OutVoip()
     char cfwdprogress[4] = {'\0'};
     char cfwdanswer[4] = {'\0'};
 
-    DBQuery("lineIO", "pkey", PARM_KEY, "carrier,username,remotenum,peername,callprogress,desc,transform,match");
-    strlcpy(carrier, rescols[0], sizeof(carrier));
-    strlcpy(username, rescols[1], sizeof(username));
-    strlcpy(voipnum, rescols[2], sizeof(voipnum));
-    strlcpy(peername, rescols[3], sizeof(peername));
-    strlcpy(callprogress, rescols[4], sizeof(callprogress));
-    strlcpy(desc, rescols[5], sizeof(desc));
-    strlcpy(transform, rescols[6], sizeof(transform));
-    strlcpy(preSel, rescols[7], sizeof(preSel));
+    DBQuery("trunks", "pkey", key, "username,peername,callprogress,desc,transform,match,technology");
+    strlcpy(username, rescols[0], sizeof(username)); 
+    strlcpy(peername, rescols[1], sizeof(peername)); 
+    strlcpy(callprogress, rescols[3], sizeof(callprogress));
+    strlcpy(desc, rescols[3], sizeof(desc));
+    strlcpy(transform, rescols[4], sizeof(transform));
+    strlcpy(preSel, rescols[5], sizeof(preSel));    //match
+    strlcpy(technology, rescols[6], sizeof(technology));
 
-    DBQuery("carrier", "pkey", carrier, "carriertype,technology");
-    strlcpy(carriertype, rescols[0], sizeof(carriertype));
-    strlcpy(technology, rescols[1], sizeof(technology));
 
     if (!strcmp(peername, ""))
     {
-        strlcpy(peername, DBQuery("lineIO", "pkey", PARM_KEY, "desc"), sizeof(peername));
+        strlcpy(peername, desc, sizeof(peername));
     }
 
     AGITool_get_variable(&agi, &res, "VOIPMAX");
@@ -1470,7 +1429,7 @@ void OutVoip()
         // if this is a sx to sx trunk (called InterSARK) then leave the clip as the extension number even if there
         // are overrides.  This caters for inter site calls where the caller wants to send their extension number even
         // though they normally send a DDI on an outbound call.
-        if (strcmp(carrier, "SailToSail") && strcmp(carrier, "InterSARK"))
+        if (strcmp(technology, "SailToSail") && strcmp(technology, "InterSARK"))
     {
         outboundClip(PARM_KEY);
     }
@@ -1842,7 +1801,9 @@ void Dial(char *number, char *type, char *twin, char *vmbox)
 
 char *SetRecord(char *key, char *compass)
 {
-
+/*
+ * Change this.   Everything is mixmonitor now.   Monitor is gone
+*/
     DebugFunctionTrace(__FUNCTION__);
 
     char devicerec[16] = {'\0'};
@@ -2091,12 +2052,9 @@ void CFToggle()
 
     DebugFunctionTrace(__FUNCTION__);
 
-    char operator[16] = { '\0' };
-    char sysop[16] = {'\0'};
     char type[32] = {'\0'};
-    char fromNum[32] = {'\0'};
     char toNum[32] = {'\0'};
-    char *technology;
+    char *technology;           // Change name - CONFUSING !!!!!!!!!!!
     char *sipId;
 /**
  *  Get the type (CFBS/CFIM) from the cfTab
@@ -2129,7 +2087,7 @@ void CFVMailSet()
     DebugFunctionTrace(__FUNCTION__);
 
     char fromNum[32] = {'\0'};
-    char *technology;
+    char *technology;           // Change name - CONFUSING !!!!!!!!!!!
     char *sipId;
 
     strlcat(fromNum, callerid, sizeof(fromNum));
@@ -2164,7 +2122,7 @@ void CFVMailToggle()
 
     char fromNum[32] = {'\0'};
     char toNum[32] = {'\0'};
-    char *technology;
+    char *technology;           // Change name - CONFUSING !!!!!!!!!!!
     char *sipId;
 
     strlcat(fromNum, callerid, sizeof(fromNum));
@@ -2216,7 +2174,7 @@ void CFOff()
 
     DebugFunctionTrace(__FUNCTION__);
 
-    char *technology;
+    char *technology;           // Change name - CONFUSING !!!!!!!!!!!
     char *sipId;
 /**
  *  Get the SIP endpoint ID from the channel variable
@@ -2238,7 +2196,7 @@ void SetRingDelay()
     char fromNum[32] = {'\0'};
     char ringDelay[4] = {'\0'};
 
-    char *technology;
+    char *technology;           // Change name - CONFUSING !!!!!!!!!!!
     char *sipId;
     
 
@@ -2266,7 +2224,7 @@ char *StripPreselect(char *preSel, char *number)
     // if the number has a preselect then remove it
     if (!strncmp(number, preSel, strlen(preSel)))
     {
-        for (i = 0; i < strlen(number); i++)
+        for (i = 0; i < (int)strlen(number); i++)
         {
             number[i] = number[i + strlen(preSel)];
         }
@@ -2314,7 +2272,6 @@ void Inbound()
     //    char faxDetectVal[8] = {'\0'};
     char tag[64] = {'\0'};
     char swoclip[8] = {'\0'};
-    char carrier[32] = {'\0'};
     char prefix[32] = {'\0'};
     char moh[16] = {'\0'};
     char maxin[4] = {'\0'};
@@ -2364,7 +2321,7 @@ void Inbound()
         AGITool_exec(&agi, &res, "Set", "__DYNAMIC_FEATURES=automon#clear#pause#resume");
     }
 
-    DBQuery("lineIO", "pkey", PARM_KEY, "technology,tag,inprefix,alertinfo,transformclip,moh,swoclip");
+    DBQuery("inroutes", "pkey", PARM_KEY, "technology,tag,inprefix,alertinfo,transformclip,moh,swoclip");
     strlcpy(technology, rescols[0], sizeof(technology));
     strlcpy(tag, rescols[1], sizeof(tag));
     strlcpy(prefix, rescols[2], sizeof(prefix));
@@ -2372,16 +2329,6 @@ void Inbound()
     strlcpy(transformclip, rescols[4], sizeof(transformclip));
     strlcpy(moh, rescols[5], sizeof(moh));
     strlcpy(swoclip, rescols[6], sizeof(swoclip));
-
-    /*  FAX detet removed in V7
-        strcpy(faxDetect, DBQuery("lineIO", "pkey", PARM_KEY, "faxdetect"));
-        if (!strcmp(faxDetect, "YES")) {
-           AGITool_answer(&agi,&res);
-    //	   strcat(faxSilence, faxDetectVal);
-           AGITool_exec(&agi,&res,"Wait",faxDetectVal);
-        }
-    */
-    // Should we use remotenum  or carrier because analogue can be DAHDI, Zap or number
 
     AGITool_get_variable(&agi, &res, "RINGDELAY");
     strlcpy(ringDelay, res.data, sizeof(ringDelay));
@@ -2395,7 +2342,6 @@ void Inbound()
 
     //  CLI Prefix
 
-    strcpy(prefix, DBQuery("lineIO", "pkey", PARM_KEY, "inprefix"));
     if (strcmp(prefix, ""))
     {
         if (!strcmp(prefix, "0 "))
@@ -2412,12 +2358,11 @@ void Inbound()
 
     if (strcmp(swoclip, "NO") && strcmp(callerid, ""))
     {
-        strlcpy(carrier, DBQuery("lineIO", "pkey", callerid, "carrier"), sizeof(carrier));
-        if (!strcmp(carrier, "PTT_CLID") || !strcmp(carrier, "CLID"))
+        if (!strcmp(technology, "PTT_CLID") || !strcmp(technology, "CLID"))
         {
             if (strcmp(callerid, PARM_KEY))
             {
-                strlcpy(clicluster, DBQuery("lineIO", "pkey", callerid, "cluster"), sizeof(clicluster));
+                strlcpy(clicluster, DBQuery("inroutes", "pkey", callerid, "cluster"), sizeof(clicluster));
                 if (!strcmp(myCluster, clicluster))
                 {
                     AGITool_set_priority(&agi, &res, 1);
@@ -2489,7 +2434,7 @@ void CheckState(char *remotenum)
     char rc_char[8] = {'\0'};
     char rc_dest[32] = {'\0'};
 
-    DBQuery("lineIO", "pkey", remotenum, "cluster,routeclassopen,routeclassclosed,openroute,closeroute");
+    DBQuery("inroutes", "pkey", remotenum, "cluster,routeclassopen,routeclassclosed,openroute,closeroute");
     strlcpy(cluster, rescols[0], sizeof(cluster));
     strlcpy(routeclassopen, rescols[1], sizeof(routeclassopen));
     strlcpy(routeclassclosed, rescols[2], sizeof(routeclassclosed));
@@ -2533,28 +2478,6 @@ void CheckState(char *remotenum)
             strlcpy(rc_dest, openroute, sizeof(rc_dest));
             routeClass(remotenum, rc_char, rc_dest, myCluster);
         }
-    }
-}
-
-char *GetState(char *cluster)
-{
-
-    DebugFunctionTrace(__FUNCTION__);
-
-    char state[8] = {'\0'};
-
-    strcpy(state, DBGet("STAT", "OCSTAT"));
-    if (!strcmp(state, "OPEN"))
-    {
-        return "OPEN";
-    }
-    else if (!strcmp(state, "CLOSED"))
-    {
-        return "CLOSED";
-    }
-    else
-    {
-        return CheckTime(cluster);
     }
 }
 
@@ -2642,18 +2565,18 @@ void routeClass(char *gdest, char *rc_char, char *rc_dest, char *cluster)
         break;
         // no longer supported
     case 3:
-        //                IVR("");    // The Default IVR
+    // NOT USED LOG MSG
         break;
     case 4: // Queue Name
         AGITool_set_priority(&agi, &res, 1);
         AGITool_set_extension(&agi, &res, rc_dest);
         AGITool_set_context(&agi, &res, myClusterContext);
         break;
-    case 5: // DISA
+    case 5: // DISA  CHECK THIS !!!!!!!!!!!
         // Using the priv_sibling context is a bit of a hack -
         // It should have its own context really, if for no other
         // reason than clarity
-        strcpy(disaPass, DBQuery("lineIO", "pkey", gdest, "disapass"));
+        strcpy(disaPass, DBQuery("inroutes", "pkey", gdest, "disapass"));
         if (!strcmp(disaPass, ""))
         {
             break;
@@ -2742,7 +2665,7 @@ void routeClass(char *gdest, char *rc_char, char *rc_dest, char *cluster)
     return;
 }
 
-void IVR()
+void IVR(char *ivrname)
 {
 
     DebugFunctionTrace(__FUNCTION__);
@@ -2782,7 +2705,7 @@ void IVR()
         ivrdigitwait = atoi(ivrwork);
     }
 
-    if (strcmp(PARM_KEY, ""))
+    if (strcmp(ivrname, ""))
     {
         // get the number of options for the menu and construct the option string
         DBQuery("ivrmenu", "pkey", PARM_KEY, "option0,option1,option2,option3,option4,option5,option6,option7,option8,option9,option10,option11");
@@ -2869,7 +2792,7 @@ void IVR()
         // If no key is pressed then perform the timeout action
         if (!strcmp(DBQuery("ivrmenu", "pkey", PARM_KEY, "timeout"), "Repeat Message"))
         {
-            IVR();
+            IVR(ivrname);
             return;
         }
         else
@@ -3312,13 +3235,17 @@ void QLogWrite(char *buffer)
 */
 void outboundClip(char *key)
 {
-
+/*
+ * N.B. Look at the new version of this code in 6.2
+ *
+ */
+ 
     DebugFunctionTrace(__FUNCTION__);
 
     char clidwork[MAX_EXT_LEN] = {'\0'};
     char shortrdnis[5] = {'\0'};
 
-    strlcpy(clidline, DBQuery("lineIO", "pkey", key, "callerid"), sizeof(clidline));
+    strlcpy(clidline, DBQuery("trunks", "pkey", key, "callerid"), sizeof(clidline));
 
     /*
      * Changed to retrieve on chanID instead of CLID 16/10/19.
