@@ -288,7 +288,7 @@ int main(int argc, char **argv)
         PrepDial(PARM_KEY,PARM_PM1,"","");   // direct dial
         break;
     case 6:
-        IVR();          // IVR menus
+        IVR(PARM_KEY);          // IVR menus
         break;
     case 7:
         OutQmt();       // Queuemetrics outbound stuff 
@@ -2420,7 +2420,7 @@ char *CheckTime(char *cluster)
     return "OPEN";
 }
 
-void IVR()
+void IVR(char *ivrname)
 {
 
     DebugFunctionTrace(__FUNCTION__);
