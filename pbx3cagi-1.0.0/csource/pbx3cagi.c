@@ -46,6 +46,7 @@ char clidline[MAX_EXT_LEN] = {'\0'};      // CLI from trunk DB entry
 char clidphone[MAX_EXT_LEN] = {'\0'};     // CLI from phone DB entry
 char clidstrng[MAX_EXT_LEN] = {'\0'};     // CLI build string for sprintf
 char context[MAX_CLUSTER_LEN] = {'\0'};   // The curent context
+char agi_dnid[MAX_EXT_LEN] = {'\0'};          // agi_dnid from Asterisk
 char extension[MAX_EXT_LEN] = {'\0'};     // agi_extension from Asterisk
 char rdnis[MAX_EXT_LEN] = {'\0'};         // agi_rdnis from Asterisk
 char myCluster[MAX_CLUSTER_LEN] = {'\0'}; // The cluster(Tenant) assigned to this call
@@ -59,6 +60,8 @@ char routeclassclosed[8] = {'\0'};   // closed routeclass
 char openroute[32] = {'\0'};         // open route
 char closeroute[32] = {'\0'};        // closed route
 char myQuery[255] = {'\0'};          // regular SQL query
+char setcdrcmd[64] = "CHANNEL(accountcode)=";
+
 
 long debug = FALSE;
 int abstimeint = 14400; // default (4 hours)						// debug on/off
@@ -144,7 +147,7 @@ int main(int argc, char **argv)
     strlcpy(extension, AGITool_ListGetVal(agi.agi_vars, "agi_extension"), sizeof(extension));
     strlcpy(rdnis, AGITool_ListGetVal(agi.agi_vars, "agi_rdnis"), sizeof(rdnis));
     strlcpy(channel, AGITool_ListGetVal(agi.agi_vars, "agi_channel"), sizeof(channel));
-
+    strlcpy(agi_dnid, AGITool_ListGetVal(agi.agi_vars, "agi_dnid"), sizeof(agi_dnid));
 
 	
     if (isdigit(callerid[0])) {
@@ -1304,7 +1307,6 @@ void LepDial()
     char celltwindial[MAX_EXT_LEN] = {'\0'};
     char *pBtr = &blindtransfer[4];
     char calleridsave[MAX_EXT_LEN] = {'\0'};
-    char agi_dnid[MAX_EXT_LEN] = {'\0'};
     char dstatus[16] = {'\0'};
     char vmflags[4] = {'\0'};
     char voiceinstr[8] = {'\0'};
@@ -1314,7 +1316,6 @@ void LepDial()
     char bouncealert[128] = {'\0'};
     char transfer[4] = {'\0'};
 
-    strlcpy(agi_dnid, AGITool_ListGetVal(agi.agi_vars, "agi_dnid"), sizeof(agi_dnid));
     AGITool_get_variable(&agi, &res, "BLINDTRANSFER");
     strlcpy(blindtransfer, res.data, sizeof(blindtransfer));
 
@@ -1572,7 +1573,7 @@ void PrepDial(char *number, char *type, char *twin, char *vmbox)
 /**
  *  set the dialled number (DNID) in the CDR user field
  */
-    strlcat(setcdrcmduser, dnid, sizeof(setcdrcmduser));
+    strlcat(setcdrcmduser, agi_dnid, sizeof(setcdrcmduser));
     AGITool_exec(&agi, &res, "Set", setcdrcmduser);
 
 /**
@@ -1740,7 +1741,7 @@ char *SetRecord(char *key, char *compass)
  *  add the queuename and agent (if any)
  */
         strcpy(filename, key);
-        snprintf(myQuery, sizeof(myQuery), "SELECT devicerec from Queue WHERE pkey='%s' and cluster = '%s'", dnid,myCluster);
+        snprintf(myQuery, sizeof(myQuery), "SELECT devicerec from Queue WHERE pkey='%s' and cluster = '%s'", agi_dnid,myCluster);
         sqlQuery(myQuery);
         strlcpy(devicerec, rescols[0], sizeof(devicerec));        
     }
@@ -1799,7 +1800,7 @@ char *SetRecord(char *key, char *compass)
 
     if (record)
     {
-        snprintf(filework, sizeof(filework), "%d-%s-%s-%s", (int)time(&now), myCluster, dnid, callerid);
+        snprintf(filework, sizeof(filework), "%d-%s-%s-%s", (int)time(&now), myCluster, agi_dnid, callerid);
         strlcat(filename, filework, sizeof(filename));
 
         /**
@@ -1898,12 +1899,12 @@ char *CFCheck(char *type, char *number)
     {
         strlcpy(cfnum, DBGet(type, number), sizeof(cfnum));
 /* Is this DND? */
-        if (!strcmp(cfnum,dnid)) 
+        if (!strcmp(cfnum,agi_dnid)) 
         {
 /**
  *  then go to voicemail
  */
-            sprintf(vmbox,"%s@%s%s",dnid,myCluster,vmflags);
+            sprintf(vmbox,"%s@%s%s",agi_dnid,myCluster,vmflags);
             AGITool_exec(&agi,&res,"Voicemail",vmbox);
 			return NULL;
         }
