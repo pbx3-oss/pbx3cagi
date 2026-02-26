@@ -3242,76 +3242,109 @@ void outboundClip(char *key)
  
     DebugFunctionTrace(__FUNCTION__);
 
-    char clidwork[MAX_EXT_LEN] = {'\0'};
-    char shortrdnis[5] = {'\0'};
+	char clidwork[MAX_EXT_LEN] = {'\0'};
 
-    strlcpy(clidline, DBQuery("trunks", "pkey", key, "callerid"), sizeof(clidline));
+	// backstop CLID if all else fails - take the trunk's CLID (if it exists)
+	strcpy(clidline, DBQuery("trunks", "pkey", key, "callerid"));
+	if (strcmp(clidline, "")) {
+		strcpy(clidwork, clidline);
+		sprintf (vmsg,"trunks CLID  %s found for outbound call, using key %s", clidwork, key);
+		AGITool_verbose(&agi,&res,vmsg,1);
+	}
+	else {
+		sprintf (vmsg,"No trunks CLID found for outbound call, using key %s", key);
+		AGITool_verbose(&agi,&res,vmsg,1);
+	}
 
-    /*
-     * Changed to retrieve on chanID instead of CLID 16/10/19.
-     * callerid is misleading in V7 because it can be duplicated across tenants
-     * chanId is the true SIP endpoint ID
-     */
-    if (caller_is_local)
-    {
-        snprintf(myQuery, sizeof(myQuery), "SELECT callerid from ipphone WHERE pkey='%s' AND cluster='%s'", callerid, myCluster);
-        sqlQuery(myQuery);
-        strlcpy(clidphone, rescols[0], sizeof(clidphone));
-    }
-    /*
-       ToDo - this RDNIS code is wrong in the new regime.   The RDNIS is a full SIP number which doesn't
-       exist in the DB.   This is anyway a corner case, it will insert the cporrect CLID when someone calls a phone that
-       is forwarded so that the correct CLID is sent.
-     */
-    else if (rdnis_is_local)
-    {
 
-        if (!strcmp(myCluster, "default"))
-        {
-            snprintf(myQuery, sizeof(myQuery), "SELECT callerid from ipphone WHERE pkey='%s' AND cluster='%s'", rdnis, myCluster);
-        }
-        else
-        {
-            char *skip = rdnis;
-            skip += 2;
-            strlcpy(shortrdnis, skip, sizeof(shortrdnis));
-            snprintf(myQuery, sizeof(myQuery), "SELECT callerid from ipphone WHERE pkey='%s' AND cluster='%s'", shortrdnis, myCluster);
-        }
-        sqlQuery(myQuery);
-        strlcpy(clidphone, rescols[0], sizeof(clidphone));
-    }
+	// If there is a cluster CLID then it trumps the line 
+	if (strcmp(myClusterclid, "")) {
+		sprintf (vmsg,"Cluster CLID %s found", myClusterclid);
+		AGITool_verbose(&agi,&res,vmsg,1);
+		strcpy(clidwork, myClusterclid);
+	}
+	else {
+		sprintf (vmsg,"no cluster CLID found for outbound call, using key %s", key);
+		AGITool_verbose(&agi,&res,vmsg,1);
+	}
 
-    if (strcmp(clidline, ""))
-    {
-        if (caller_is_local)
-        {
-            strlcpy(clidwork, clidline, sizeof(clidwork));
-        }
-        else if (!strcmp(DBQuery("globals", "pkey", "global", "CFWDEXTRNRULE"), "enabled"))
-        {
-            strlcpy(clidwork, clidline, sizeof(clidwork));
-        }
-    }
 
-    if (strcmp(myClusterclid, ""))
-    {
-        if (caller_is_local)
-        {
-            strlcpy(clidwork, myClusterclid, sizeof(clidwork));
-        }
-    }
+	//if there is an extension CLID or RDNIS CLID then it trumps the line and cluster CLID 
+	if (caller_is_local) {
+		strcpy(clidphone, DBQuery("IPphone", "pkey", callerid, "callerid"));		
+	}
+	// if the RDNIS is local, set its CLID into clidphone
+	else if (rdnis_is_local) {
+		strcpy(clidphone, DBQuery("IPphone", "pkey", rdnis, "callerid"));
+	}
 
-    if (strcmp(clidphone, ""))
-    {
-        strlcpy(clidwork, clidphone, sizeof(clidwork));
-    }
+	// Only take the extension clid if it is longer than 5 characters (i.e. - not an extension number)
+	// we do not want to send an extension number CLID onto the PSTN
+	if (strcmp(clidphone, "") && (strlen(clidphone) > 5)) {
+		strcpy(clidwork, clidphone);
+		sprintf (vmsg,"Extension CLID %s found for outbound call, using key %s", clidwork, key);
+		AGITool_verbose(&agi,&res,vmsg,1);
+	}
+	else {
+		sprintf (vmsg,"No PSTN extension CLID found for outbound call, using clid %s", clidphone);
+		AGITool_verbose(&agi,&res,vmsg,1);
+	}
 
-    if (strcmp(clidwork, ""))
-    {
-        snprintf(clidstrng, sizeof(clidstrng), "CALLERID(number)=%s", clidwork);
-        AGITool_exec(&agi, &res, "Set", clidstrng);
-    }
-    return;
+	sprintf (vmsg,"Phase 1 CLID is %s for outbound call, using key %s", clidwork, key);
+	AGITool_verbose(&agi,&res,vmsg,1);
+
+	// At this point we should have a CLID in clidwork if we don't then we should just go with what we were given 
+	// because we can do no more.
+	// We now have to decide whether to use the given CLID (in the case of a straight passthru) or the derived CLID 
+	// in the case of a local caller.
+
+/* This area needs to be reworked, it does not work for multi-tenant/multi-trunk systems
+	it should be trunk specific not global so we need a new value in the trunks table to turn it on/off
+	
+	if (strcmp(clidline, "")) {
+		if (caller_is_local) {
+			strcpy(clidwork, clidline);
+		}  
+		else if (!strcmp(DBQuery("globals", "pkey", "global", "CFWDEXTRNRULE"), "enabled")) {
+
+		}
+	}
+*/
+	// check we have a CLID to set
+	if (strcmp(clidwork,"")) {
+		// If this is a locally originated call then we can use the CLID we found
+		if (caller_is_local) {
+			sprintf (vmsg,"Using CLID %s for outbound call, using key %s", clidwork, key);
+			AGITool_verbose(&agi,&res,vmsg,1);
+			sprintf(clidstrng,"CALLERID(number)=%s",clidwork);
+			AGITool_exec(&agi,&res,"Set", clidstrng);		
+		
+			// if the RDNIS is set (which covers local diversions) then reset it to the CLID to make it safe.  
+			// It will look odd because the DIVERT header will be the same as the FROM header but it is necessary 
+			// in the case of a local call which already has RDNIS set.  This will happen if the diversion has come from a phone
+			// (rather than a pbx divert, e.g. *21*) and the phone has set the RDNIS to the original callerid.
+		
+			if (rdnis_is_set) {
+				sprintf (vmsg,"Using CLID %s to override local RDNIS", clidwork);
+				AGITool_verbose(&agi,&res,vmsg,1);
+				sprintf(clidstrng,"CALLERID(RDNIS)=%s",clidwork);
+				AGITool_exec(&agi,&res,"Set", clidstrng);
+			}
+		}
+		// if the inbound callerid is a real number then this is a hairpin call so set the RDNIS to our CLID to create a 
+		// diversion header.
+		
+		else {
+			sprintf(clidstrng,"CALLERID(RDNIS)=%s",clidwork);
+			AGITool_exec(&agi,&res,"Set", clidstrng);
+		}
+	}   
+	else {
+		// we have no CLID to set so just log it
+		sprintf (vmsg,"No override CLID found for outbound call, using key %s", key);
+		AGITool_verbose(&agi,&res,vmsg,1);
+	}
+	return;
 }
 
 void consoleMsg(char *vmsg, int level)
