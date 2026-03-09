@@ -132,7 +132,7 @@ int main(int argc, char **argv)
 
     AGITool_Init(&agi);
 
-    AGITool_get_variable(&agi, &res, "DEBUG");
+    AGITool_get_variable(&agi, &res, "DEBUG"); // DEBUG is an Asterisk variable set from the console
     if (!strcmp(res.data, "ON"))
     {
         debug = TRUE;
@@ -198,7 +198,7 @@ int main(int argc, char **argv)
     snprintf(vmsg, sizeof(vmsg), "Phase Main Assigned a cluster of %s with PARM_CMD %s and PARM_PM3 %s", context, PARM_CMD, PARM_PM3);
     DebugFunctionMsg(__FUNCTION__, vmsg);
 
-    AGITool_get_variable(&agi, &res, "ABSTIMEOUT");
+    AGITool_get_variable(&agi, &res, "ABSTIMEOUT"); // ** abstimeout is held in the tenant table (used to be in Globals)
     if (strcmp(res.data, ""))
     {
         abstimeint = atoi(res.data);
@@ -517,7 +517,7 @@ void RecGreet()
     snprintf(newGreetFile, sizeof(newGreetFile), "%s%s/usergreeting%s.wav", SOUNDIR, myCluster, ext);
 
     // check password
-    if (Authenticate("SYSPASS") != 0)
+    if (Authenticate("SYSPASS") != 0) //** syspass is held in the tenant table (used to be in Globals)
     {
         return;
     }
@@ -563,7 +563,7 @@ int Authenticate(char *password)
 
     // get password from DB
 
-    AGITool_get_variable(&agi, &res, password);
+    AGITool_get_variable(&agi, &res, password); //set by various callers (sysop, spy, etc)
     strlcpy(syspass, res.data, sizeof(syspass));
     if (strcmp(syspass, ""))
     {
@@ -679,7 +679,7 @@ void AgentLogin()
                     if (strcmp(oldagent, ""))
                     {
                         strlcpy(startepoch, DBGet(f_dynLogin, oldagent), sizeof(startepoch));
-                        AGITool_get_variable(&agi, &res, "EPOCH");
+                        AGITool_get_variable(&agi, &res, "EPOCH"); //Asterisk system variable EPOCH
                         strlcpy(epoch, res.data, sizeof(epoch));
                         for (i = 1; i < 7; i++)
                         {
@@ -714,7 +714,7 @@ void AgentLogin()
                             AGITool_exec(&agi, &res, "AddQueueMember", queuearg);
                         }
                     }
-                    AGITool_get_variable(&agi, &res, "EPOCH");
+                    AGITool_get_variable(&agi, &res, "EPOCH"); //Asterisk system variable EPOCH
                     strlcpy(epoch, res.data, sizeof(epoch));
                     snprintf(buffer, sizeof(buffer), "%s|%s|NONE|Agent/%s|AGENTLOGIN|%s", epoch, uniqueid, agent, agentchan);
                     QLogWrite(buffer);
@@ -776,7 +776,7 @@ void AgentLogout()
         return;
     }
 
-    AGITool_get_variable(&agi, &res, "EPOCH");
+    AGITool_get_variable(&agi, &res, "EPOCH"); //Asterisk system variable EPOCH
     strlcpy(epoch, res.data, sizeof(epoch));
     strlcpy(startepoch, DBGet(f_dynLogin, agent), sizeof(startepoch));
     //	AGITool_exec(&agi,&res,"Authenticate",agentpasswd);
@@ -849,7 +849,7 @@ void AgentSpy()
 
     DebugFunctionTrace(__FUNCTION__);
 
-    if (Authenticate("SPYPASS") != 0)
+    if (Authenticate("SPYPASS") != 0) //** spy_pass is held in the tenant table (used to be in Globals)
     {
         return;
     }
@@ -864,7 +864,7 @@ void ChanSpyWhisper()
 
     char ext[MAX_EXT_LEN] = {'\0'};
     char options[32] = {'\0'};
-    if (Authenticate("SPYPASS") != 0)
+    if (Authenticate("SPYPASS") != 0) //** spy_pass is held in the tenant table (used to be in Globals)
     {
         return;
     }
@@ -884,7 +884,7 @@ void ChanSpy()
 
     char ext[MAX_EXT_LEN] = {'\0'};
     char options[32] = {'\0'};
-    if (Authenticate("SPYPASS") != 0)
+    if (Authenticate("SPYPASS") != 0) //** spy_pass is held in the tenant table (used to be in Globals)
     {
         return;
     }
@@ -927,14 +927,17 @@ void OutRoute()
     strlcpy(clusterAbstimeout, rescols[1], sizeof(clusterAbstimeout));
     strlcpy(myClusterclid, rescols[2], sizeof(myClusterclid));
 
-    // Set dynamic features if necessary
-    AGITool_get_variable(&agi, &res, "SET_DYNAMIC_FEATURES");
+    // Set dynamic features if necessary 
+    // *****   This feature should be removed.   It was for Asterisk Monitor which no longer exists */
+    AGITool_get_variable(&agi, &res, "SET_DYNAMIC_FEATURES"); // SET_DYNAMIC_FEATURES is set in the genarator
     strlcpy(set_dynamic_features, res.data, sizeof(set_dynamic_features));
     if (!strcmp(set_dynamic_features, "YES"))
     {
         AGITool_exec(&agi, &res, "Set", "__DYNAMIC_FEATURES=clear#outpause#outresume");
     }
-
+    // ******************************************************* */
+    
+    
     /*
      * set timeout to the clusterAbstimeout (if present)...
      * ...and check if the cluster is barred (clusterAbstimeout=0)
@@ -986,7 +989,7 @@ void OutRoute()
         snprintf(clusterGroup, sizeof(clusterGroup), "GROUP(%s)", myCluster);
         AGITool_set_variable(&agi, &res, clusterGroup, myCluster);
         snprintf(clusterCount, sizeof(clusterCount), "GROUP_COUNT(%s)", myCluster);
-        AGITool_get_variable(&agi, &res, clusterCount);
+        AGITool_get_variable(&agi, &res, clusterCount); // clusterCount is the number of active outbound calls
         if (atoi(res.data) > atoi(clusterChanmax))
         {
             AGITool_exec(&agi, &res, "Playtones", "busy");
@@ -1017,11 +1020,11 @@ void OutRoute()
 /**
  * This need to change for cluster independence
  */
-    AGITool_get_variable(&agi, &res, "PLAYBEEP");
+    AGITool_get_variable(&agi, &res, "PLAYBEEP"); // ** held in tenant - need to retrieve it play_beep
     strlcpy(beep, res.data, sizeof(beep));
-    AGITool_get_variable(&agi, &res, "PLAYBUSY");
+    AGITool_get_variable(&agi, &res, "PLAYBUSY"); // ** held in tenant - need to retrieve it play_busy
     strlcpy(busy, res.data, sizeof(busy));
-    AGITool_get_variable(&agi, &res, "PLAYCONGESTED");
+    AGITool_get_variable(&agi, &res, "PLAYCONGESTED"); // ** held in tenant - need to retrieve it play_congested
     strlcpy(congested, res.data, sizeof(congested));
     /*
      * set the first path (if we are balancing)
@@ -1029,7 +1032,7 @@ void OutRoute()
     last = 0;
     if (!strncmp(strategy, "balance", 7))
     {
-        AGITool_get_variable(&agi, &res, PARM_KEY);
+        AGITool_get_variable(&agi, &res, PARM_KEY); // PARM_KEY is the path key - no change for PBX3
         last = atoi(res.data);
         if (last < 3)
         {
@@ -1063,7 +1066,7 @@ void OutRoute()
             }
         }
     
-        AGITool_get_variable(&agi, &res, "DIALSTATUS");
+        AGITool_get_variable(&agi, &res, "DIALSTATUS"); // DIALSTATUS is the status of the call - answered, busy, cancelled
         if (!strcmp(res.data, "ANSWER"))
         {
             return;
@@ -1132,9 +1135,9 @@ void OutTrunk(char *key)
     char active[4] = {'\0'};
 
 
-    AGITool_get_variable(&agi, &res, "PLAYBUSY");
+    AGITool_get_variable(&agi, &res, "PLAYBUSY"); // ** held in tenant - need to retrieve it play_busy
     strlcpy(busy, res.data, sizeof(busy));
-    AGITool_get_variable(&agi, &res, "PLAYCONGESTED");
+    AGITool_get_variable(&agi, &res, "PLAYCONGESTED"); // ** held in tenant - need to retrieve it play_congested
     strlcpy(congested, res.data, sizeof(congested));
 
     strlcpy(active, DBQuery("trunks", "pkey", PARM_KEY, "active"), sizeof(active));
@@ -1143,7 +1146,7 @@ void OutTrunk(char *key)
     if (!strcmp(active, "YES"))
     {
         OutVoip(key);
-        AGITool_get_variable(&agi, &res, "DIALSTATUS");
+        AGITool_get_variable(&agi, &res, "DIALSTATUS"); // DIALSTATUS is the status of the call - answered, busy, cancelled
         if (!strcmp(res.data, "ANSWER"))
         {
         }
@@ -1214,9 +1217,9 @@ void OutVoip(char *key)
         strlcpy(peername, desc, sizeof(peername));
     }
 
-    AGITool_get_variable(&agi, &res, "VOIPMAX");
+    AGITool_get_variable(&agi, &res, "VOIPMAX"); // held in Globals.  Maximum outbound VoIP calls
     strlcpy(voipmax, res.data, sizeof(voipmax));
-    AGITool_get_variable(&agi, &res, "ALLOWHASHXFER");
+    AGITool_get_variable(&agi, &res, "ALLOWHASHXFER"); // ** held in tenant - need to retrieve it allow_hash_xfer
     strlcpy(allowhashxfer, res.data, sizeof(allowhashxfer));
 
     if (strcmp(transform, ""))
@@ -1280,7 +1283,7 @@ void OutVoip(char *key)
     }
 
     AGITool_set_variable(&agi, &res, "GROUP()", "OUTBOUND_GROUP");
-    AGITool_get_variable(&agi, &res, "GROUP_COUNT()");
+    AGITool_get_variable(&agi, &res, "GROUP_COUNT()"); // GROUP_COUNT() is the number of active outbound calls
     if (atoi(res.data) <= atoi(voipmax))
     {
         strlcpy(recRet, SetRecord(callerid, "Outbound"), sizeof(recRet));
@@ -1316,7 +1319,7 @@ void LepDial()
     char bouncealert[128] = {'\0'};
     char transfer[4] = {'\0'};
 
-    AGITool_get_variable(&agi, &res, "BLINDTRANSFER");
+    AGITool_get_variable(&agi, &res, "BLINDTRANSFER");  //set in extensions.conf
     strlcpy(blindtransfer, res.data, sizeof(blindtransfer));
 
     //    DBQuery("IPphone", "pkey", extension, "dvrvmail,extalert,cluster");
@@ -1333,7 +1336,7 @@ void LepDial()
         strlcat(vmbox, calledCluster, sizeof(vmbox));
     }
 
-    AGITool_get_variable(&agi, &res, "VOICEINSTR");
+    AGITool_get_variable(&agi, &res, "VOICEINSTR"); // ** held in tenant - need to retrieve it voice_instr
     strlcpy(voiceinstr, res.data, sizeof(voiceinstr));
     strlcpy(vmflags, ASTDLIM, sizeof(vmflags));
     if (!strcmp(voiceinstr, "NO"))
@@ -1354,7 +1357,7 @@ void LepDial()
                 if (strcmp(agi_dnid, extension))
                 {
                     AGITool_exec(&agi, &res, "Playback", "silence/1");
-                    AGITool_get_variable(&agi, &res, "PLAYTRANSFER");
+                    AGITool_get_variable(&agi, &res, "PLAYTRANSFER"); // ** held in tenant - need to retrieve it play_transfer
                     strlcpy(transfer, res.data, sizeof(transfer));
                     if (!strcmp(transfer, "YES"))
                     {
@@ -1442,7 +1445,7 @@ void LepDial()
      */
     //	AGITool_Init(&agi);
 
-    AGITool_get_variable(&agi, &res, "DIALSTATUS");
+    AGITool_get_variable(&agi, &res, "DIALSTATUS"); // DIALSTATUS is the status of the call - answered, busy, cancelled
     strcpy(dstatus, res.data);
     if (!strcmp(dstatus, "ANSWER"))
     { // shouldn't ever happen when running HUP'd
@@ -1465,7 +1468,7 @@ void LepDial()
             {
                 if (strcmp(agi_dnid, extension))
                 {
-                    AGITool_get_variable(&agi, &res, "BOUNCEALERT");
+                    AGITool_get_variable(&agi, &res, "BOUNCEALERT"); // ** held in tenant - need to retrieve it bounce_alert
                     strlcpy(bouncealert, res.data, sizeof(bouncealert));
                     if (strcmp(bouncealert, ""))
                     {
@@ -1502,14 +1505,14 @@ void LepDial()
             if (strcmp(agi_dnid, extension))
             {
                 AGITool_exec(&agi, &res, "Playback", "silence/1");
-                AGITool_get_variable(&agi, &res, "PLAYTRANSFER");
+                AGITool_get_variable(&agi, &res, "PLAYTRANSFER"); // ** held in tenant - need to retrieve it play_transfer
                 strlcpy(transfer, res.data, sizeof(transfer));
                 if (!strcmp(transfer, "YES"))
                 {
                     AGITool_exec(&agi, &res, "Playback", "pls-hold-while-try");
                 };
 
-                AGITool_get_variable(&agi, &res, "BOUNCEALERT");
+                AGITool_get_variable(&agi, &res, "BOUNCEALERT"); // ** held in tenant - need to retrieve it bounce_alert
                 strlcpy(bouncealert, res.data, sizeof(bouncealert));
                 if (strcmp(bouncealert, ""))
                 {
@@ -1523,7 +1526,7 @@ void LepDial()
             }
             else
             {
-                AGITool_get_variable(&agi, &res, "BLINDBUSY");
+                AGITool_get_variable(&agi, &res, "BLINDBUSY"); // ** held in tenant - need to retrieve it blind_busy
                 strcpy(blindbusy, res.data);
                 if (strcmp(blindbusy, ""))
                 {
@@ -1597,7 +1600,7 @@ void PrepDial(char *number, char *type, char *twin, char *vmbox)
         }
         else if (!strcmp(userRingDelay, ""))
         {
-            AGITool_get_variable(&agi, &res, "INTRINGDELAY");
+            AGITool_get_variable(&agi, &res, "INTRINGDELAY"); // ** held in tenant - need to retrieve it int_ring_delay
             strlcpy(intRingDelay, res.data, sizeof(intRingDelay));
         }
         else if (!strcmp(userRingDelay, "0"))
@@ -1653,7 +1656,7 @@ void PrepDial(char *number, char *type, char *twin, char *vmbox)
 /**
  *  If the dial definition has asked for MOH instead of ringback then set it here
  */
-    AGITool_get_variable(&agi, &res, "MOH");
+    AGITool_get_variable(&agi, &res, "MOH"); //set ON/OFF in inbound routes from the dial definition
     if (!strcmp(res.data, "YES"))
     {
         strlcat(dialString, "m", sizeof(dialString));
@@ -1879,7 +1882,7 @@ char *CFCheck(char *type, char *number)
  *  VOICEINSTR is currently global.   It needs to move to Cluster or DB
  * ******************************************************
  */
-    AGITool_get_variable(&agi, &res, "VOICEINSTR");
+    AGITool_get_variable(&agi, &res, "VOICEINSTR"); // ** held in tenant - need to retrieve it voice_instr
     strlcpy(voiceinstr, res.data, sizeof(voiceinstr));
     strlcpy(vmflags, ASTDLIM, sizeof(vmflags));
 
@@ -1919,7 +1922,7 @@ char *CFCheck(char *type, char *number)
  */
         {
             AGITool_exec(&agi, &res, "Playback", "silence/1");
-            AGITool_get_variable(&agi, &res, "PLAYTRANSFER");
+            AGITool_get_variable(&agi, &res, "PLAYTRANSFER"); // ** held in tenant - need to retrieve it play_transfer
             strlcpy(transfer, res.data, sizeof(transfer));
             if (!strcmp(transfer, "YES"))
             {
@@ -2140,7 +2143,7 @@ void SetTimer()
 
     DebugFunctionTrace(__FUNCTION__);
 
-    if (Authenticate("SYSPASS") != 0)
+    if (Authenticate("SYSPASS") != 0) //** syspass is held in the tenant table (used to be in Globals)
     {
         return;
     }
@@ -2186,12 +2189,12 @@ void Ingress()
     /*
      *  check if we are at max inbound channels
      */
-    AGITool_get_variable(&agi, &res, "MAXIN");
+    AGITool_get_variable(&agi, &res, "MAXIN"); // held in Globals - maximum inbound calls
     strcpy(maxin, res.data);
     if (strcmp(maxin, ""))
     {
         AGITool_set_variable(&agi, &res, "GROUP(inbound)", "inbound");
-        AGITool_get_variable(&agi, &res, "GROUP_COUNT(inbound)");
+        AGITool_get_variable(&agi, &res, "GROUP_COUNT(inbound)"); // GROUP_COUNT(inbound) is the number of active inbound calls
 
         if (atoi(res.data) > atoi(maxin))
         {
@@ -2206,8 +2209,8 @@ void Ingress()
     AGITool_exec(&agi, &res, "Set", setcdrcmduser);
 
 /*
-    // Set dynamic features if necessary
-    AGITool_get_variable(&agi, &res, "SET_DYNAMIC_FEATURES");
+    // Set dynamic features if necessary - SHOULD BE REMOVED.
+    AGITool_get_variable(&agi, &res, "SET_DYNAMIC_FEATURES"); // SET_DYNAMIC_FEATURES is held in Globals
     strlcpy(set_dynamic_features, res.data, sizeof(set_dynamic_features));
 
     if (!strcmp(set_dynamic_features, "YES"))
@@ -2225,10 +2228,10 @@ void Ingress()
     strlcpy(swoclip, rescols[6], sizeof(swoclip));
 
 
-    AGITool_get_variable(&agi, &res, "RINGDELAY");
+    AGITool_get_variable(&agi, &res, "RINGDELAY"); // ** held in tenant - need to retrieve it ring_delay
     strlcpy(ringDelay, res.data, sizeof(ringDelay));
 
-    AGITool_get_variable(&agi, &res, "LTERM");
+    AGITool_get_variable(&agi, &res, "LTERM"); // ** held in tenant - need to retrieve it lterm
     strlcpy(lterm, res.data, sizeof(lterm));
 
     AGITool_set_variable(&agi, &res, "__MOH", moh);
@@ -2939,7 +2942,7 @@ void OutQmt()
     //
     now = time(0);
     nowend = now;
-    AGITool_get_variable(&agi, &res, "ANSWEREDTIME");
+    AGITool_get_variable(&agi, &res, "ANSWEREDTIME"); //Asterisk varaiable set when a queue ends
     answeredtime = atoi(res.data);
 
     if (answeredtime == 0)
