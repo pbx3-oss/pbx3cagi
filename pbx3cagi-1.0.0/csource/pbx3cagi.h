@@ -46,6 +46,39 @@
 #define ASTDLIM ","
   
 
+/* Tenant cluster row: loaded once per AGI invocation from SQLite `cluster` (replaces generator-injected Asterisk globals). */
+typedef struct cluster_cfg {
+    int loaded;
+    int abstimeout_sec;
+    char voipmax_str[16];
+    char allowhashxfer[32];
+    char playbeep[8];
+    char playbusy[8];
+    char playcongested[8];
+    char playtransfer[8];
+    char voiceinstr[8];
+    char bounce_alert[256];
+    char blind_busy[128];
+    char int_ring_delay[16];
+    char maxin_str[16];
+    char ringdelay_str[16];
+    char lterm_str[8];
+    char cfwd_progress[16];
+    char cfwd_answer[16];
+    char ivr_key_wait[8];
+    char ivr_digit_wait_str[16];
+    char syspass[64];
+    char spy_pass[64];
+    char dynamicfeatures[512];
+    char clusterclid[MAX_EXT_LEN];
+    char chanmax_str[16];
+    char usemohcustom[8];
+} cluster_cfg_t;
+
+extern cluster_cfg_t g_cluster_cfg;
+
+int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg);
+int AuthenticatePassword(const char *password_plain);
 
 //static void CmdFunc(int argc, char *argv[]);
 char* GetExt(char* number);

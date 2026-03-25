@@ -116,6 +116,226 @@ void DebugFunctionMsg(const char *thisFunc, const char *thisMsg)
     return;
 }
 
+cluster_cfg_t g_cluster_cfg;
+
+static void cluster_cfg_apply_defaults(cluster_cfg_t *cfg)
+{
+    memset(cfg, 0, sizeof(*cfg));
+    cfg->abstimeout_sec = 14400;
+    strlcpy(cfg->voipmax_str, "30", sizeof(cfg->voipmax_str));
+    strlcpy(cfg->allowhashxfer, "enabled", sizeof(cfg->allowhashxfer));
+    strlcpy(cfg->playbeep, "YES", sizeof(cfg->playbeep));
+    strlcpy(cfg->playbusy, "YES", sizeof(cfg->playbusy));
+    strlcpy(cfg->playcongested, "YES", sizeof(cfg->playcongested));
+    strlcpy(cfg->playtransfer, "YES", sizeof(cfg->playtransfer));
+    strlcpy(cfg->voiceinstr, "YES", sizeof(cfg->voiceinstr));
+    strlcpy(cfg->int_ring_delay, "20", sizeof(cfg->int_ring_delay));
+    strlcpy(cfg->maxin_str, "30", sizeof(cfg->maxin_str));
+    strlcpy(cfg->ringdelay_str, "20", sizeof(cfg->ringdelay_str));
+    strlcpy(cfg->lterm_str, "NO", sizeof(cfg->lterm_str));
+    strlcpy(cfg->cfwd_progress, "enabled", sizeof(cfg->cfwd_progress));
+    strlcpy(cfg->cfwd_answer, "enabled", sizeof(cfg->cfwd_answer));
+    strlcpy(cfg->ivr_key_wait, "6", sizeof(cfg->ivr_key_wait));
+    strlcpy(cfg->ivr_digit_wait_str, "6000", sizeof(cfg->ivr_digit_wait_str));
+    strlcpy(cfg->syspass, "4444", sizeof(cfg->syspass));
+    strlcpy(cfg->spy_pass, "3333", sizeof(cfg->spy_pass));
+    strlcpy(cfg->chanmax_str, "3", sizeof(cfg->chanmax_str));
+    strlcpy(cfg->usemohcustom, "NO", sizeof(cfg->usemohcustom));
+}
+
+static void escape_sql_literal(char *out, size_t outlen, const char *in)
+{
+    size_t o = 0;
+    size_t i;
+
+    for (i = 0; in[i] != '\0' && o + 1 < outlen; i++)
+    {
+        if (in[i] == '\'')
+        {
+            if (o + 2 >= outlen)
+            {
+                break;
+            }
+            out[o++] = '\'';
+            out[o++] = '\'';
+        }
+        else
+        {
+            out[o++] = in[i];
+        }
+    }
+    out[o] = '\0';
+}
+
+int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg)
+{
+    char esc[128];
+    char query[1400];
+    sqlite3 *handle = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int retval;
+    int i;
+
+    cluster_cfg_apply_defaults(cfg);
+
+    if (cluster_pkey == NULL || cluster_pkey[0] == '\0')
+    {
+        DebugFunctionMsg(__FUNCTION__, "load_cluster_cfg: empty cluster pkey");
+        return -1;
+    }
+
+    escape_sql_literal(esc, sizeof(esc), cluster_pkey);
+    snprintf(
+        query, sizeof(query),
+        "SELECT abstimeout, voip_max, allow_hash_xfer, play_beep, play_busy, play_congested, "
+        "play_transfer, voice_instr, bounce_alert, blind_busy, int_ring_delay, maxin, ringdelay, lterm, "
+        "cfwd_progress, cfwd_answer, ivr_key_wait, ivr_digit_wait, syspass, spy_pass, dynamicfeatures, "
+        "clusterclid, chanmax, usemohcustom FROM cluster WHERE pkey='%s'",
+        esc);
+
+    retval = sqlite3_open(SQLITEDB, &handle);
+    if (retval)
+    {
+        snprintf(vmsg, sizeof(vmsg), "load_cluster_cfg: sqlite open failed %i", retval);
+        DebugFunctionMsg(__FUNCTION__, vmsg);
+        return -1;
+    }
+
+    for (i = 0; i < 3; i++)
+    {
+        retval = sqlite3_prepare_v2(handle, query, -1, &stmt, NULL);
+        if (retval == SQLITE_OK)
+        {
+            break;
+        }
+        if (retval == SQLITE_LOCKED || retval == SQLITE_BUSY)
+        {
+            AGITool_exec(&agi, &res, "Wait", "0.5");
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    if (retval != SQLITE_OK)
+    {
+        snprintf(vmsg, sizeof(vmsg), "load_cluster_cfg: prepare failed %i", retval);
+        DebugFunctionMsg(__FUNCTION__, vmsg);
+        sqlite3_close(handle);
+        return -1;
+    }
+
+    retval = sqlite3_step(stmt);
+    if (retval != SQLITE_ROW)
+    {
+        snprintf(vmsg, sizeof(vmsg), "load_cluster_cfg: no cluster row for pkey=%s", cluster_pkey);
+        DebugFunctionMsg(__FUNCTION__, vmsg);
+        sqlite3_finalize(stmt);
+        sqlite3_close(handle);
+        return -1;
+    }
+
+    cfg->abstimeout_sec = sqlite3_column_type(stmt, 0) == SQLITE_NULL ? 14400 : sqlite3_column_int(stmt, 0);
+    {
+        int vm = sqlite3_column_type(stmt, 1) == SQLITE_NULL ? 30 : sqlite3_column_int(stmt, 1);
+        snprintf(cfg->voipmax_str, sizeof(cfg->voipmax_str), "%d", vm);
+    }
+    {
+        const unsigned char *t = sqlite3_column_text(stmt, 2);
+        strlcpy(cfg->allowhashxfer, t ? (const char *)t : "enabled", sizeof(cfg->allowhashxfer));
+    }
+    {
+        int v = sqlite3_column_type(stmt, 3) == SQLITE_NULL ? 1 : sqlite3_column_int(stmt, 3);
+        strlcpy(cfg->playbeep, v ? "YES" : "NO", sizeof(cfg->playbeep));
+    }
+    {
+        int v = sqlite3_column_type(stmt, 4) == SQLITE_NULL ? 1 : sqlite3_column_int(stmt, 4);
+        strlcpy(cfg->playbusy, v ? "YES" : "NO", sizeof(cfg->playbusy));
+    }
+    {
+        int v = sqlite3_column_type(stmt, 5) == SQLITE_NULL ? 1 : sqlite3_column_int(stmt, 5);
+        strlcpy(cfg->playcongested, v ? "YES" : "NO", sizeof(cfg->playcongested));
+    }
+    {
+        int v = sqlite3_column_type(stmt, 6) == SQLITE_NULL ? 1 : sqlite3_column_int(stmt, 6);
+        strlcpy(cfg->playtransfer, v ? "YES" : "NO", sizeof(cfg->playtransfer));
+    }
+    {
+        int vi = sqlite3_column_type(stmt, 7) == SQLITE_NULL ? 1 : sqlite3_column_int(stmt, 7);
+        strlcpy(cfg->voiceinstr, (vi == 0) ? "NO" : "YES", sizeof(cfg->voiceinstr));
+    }
+    {
+        const unsigned char *t = sqlite3_column_text(stmt, 8);
+        strlcpy(cfg->bounce_alert, t ? (const char *)t : "", sizeof(cfg->bounce_alert));
+    }
+    {
+        const unsigned char *t = sqlite3_column_text(stmt, 9);
+        strlcpy(cfg->blind_busy, t ? (const char *)t : "", sizeof(cfg->blind_busy));
+    }
+    {
+        int v = sqlite3_column_type(stmt, 10) == SQLITE_NULL ? 20 : sqlite3_column_int(stmt, 10);
+        snprintf(cfg->int_ring_delay, sizeof(cfg->int_ring_delay), "%d", v);
+    }
+    {
+        int v = sqlite3_column_type(stmt, 11) == SQLITE_NULL ? 30 : sqlite3_column_int(stmt, 11);
+        snprintf(cfg->maxin_str, sizeof(cfg->maxin_str), "%d", v);
+    }
+    {
+        int v = sqlite3_column_type(stmt, 12) == SQLITE_NULL ? 20 : sqlite3_column_int(stmt, 12);
+        snprintf(cfg->ringdelay_str, sizeof(cfg->ringdelay_str), "%d", v);
+    }
+    {
+        int lt = sqlite3_column_type(stmt, 13) == SQLITE_NULL ? 0 : sqlite3_column_int(stmt, 13);
+        strlcpy(cfg->lterm_str, lt ? "YES" : "NO", sizeof(cfg->lterm_str));
+    }
+    {
+        const unsigned char *t = sqlite3_column_text(stmt, 14);
+        strlcpy(cfg->cfwd_progress, t ? (const char *)t : "enabled", sizeof(cfg->cfwd_progress));
+    }
+    {
+        const unsigned char *t = sqlite3_column_text(stmt, 15);
+        strlcpy(cfg->cfwd_answer, t ? (const char *)t : "enabled", sizeof(cfg->cfwd_answer));
+    }
+    {
+        int v = sqlite3_column_type(stmt, 16) == SQLITE_NULL ? 6 : sqlite3_column_int(stmt, 16);
+        snprintf(cfg->ivr_key_wait, sizeof(cfg->ivr_key_wait), "%d", v);
+    }
+    {
+        int v = sqlite3_column_type(stmt, 17) == SQLITE_NULL ? 6000 : sqlite3_column_int(stmt, 17);
+        snprintf(cfg->ivr_digit_wait_str, sizeof(cfg->ivr_digit_wait_str), "%d", v);
+    }
+    {
+        const unsigned char *t = sqlite3_column_text(stmt, 18);
+        strlcpy(cfg->syspass, t ? (const char *)t : "4444", sizeof(cfg->syspass));
+    }
+    {
+        const unsigned char *t = sqlite3_column_text(stmt, 19);
+        strlcpy(cfg->spy_pass, t ? (const char *)t : "3333", sizeof(cfg->spy_pass));
+    }
+    {
+        const unsigned char *t = sqlite3_column_text(stmt, 20);
+        strlcpy(cfg->dynamicfeatures, t ? (const char *)t : "", sizeof(cfg->dynamicfeatures));
+    }
+    {
+        const unsigned char *t = sqlite3_column_text(stmt, 21);
+        strlcpy(cfg->clusterclid, t ? (const char *)t : "", sizeof(cfg->clusterclid));
+    }
+    {
+        int v = sqlite3_column_type(stmt, 22) == SQLITE_NULL ? 3 : sqlite3_column_int(stmt, 22);
+        snprintf(cfg->chanmax_str, sizeof(cfg->chanmax_str), "%d", v);
+    }
+    {
+        const unsigned char *t = sqlite3_column_text(stmt, 23);
+        strlcpy(cfg->usemohcustom, t ? (const char *)t : "NO", sizeof(cfg->usemohcustom));
+    }
+
+    cfg->loaded = 1;
+    sqlite3_finalize(stmt);
+    sqlite3_close(handle);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
 
@@ -198,11 +418,8 @@ int main(int argc, char **argv)
     snprintf(vmsg, sizeof(vmsg), "Phase Main Assigned a cluster of %s with PARM_CMD %s and PARM_PM3 %s", context, PARM_CMD, PARM_PM3);
     DebugFunctionMsg(__FUNCTION__, vmsg);
 
-    AGITool_get_variable(&agi, &res, "ABSTIMEOUT"); // ** abstimeout is held in the tenant table (used to be in Globals)
-    if (strcmp(res.data, ""))
-    {
-        abstimeint = atoi(res.data);
-    }
+    load_cluster_cfg(myCluster, &g_cluster_cfg);
+    abstimeint = g_cluster_cfg.abstimeout_sec;
 
     // No parameters means the special Queues "Local" backcall
     if (argc == 1)
@@ -369,7 +586,7 @@ void setMoh()
 
     strlcat(mohfolder, myCluster, sizeof(mohfolder));
 
-    if (strcmp(DBQuery("cluster", "pkey", myCluster, "usemohcustom"), "YES"))
+    if (strcmp(g_cluster_cfg.usemohcustom, "YES"))
     {
 
         snprintf(vmsg, sizeof(vmsg), "MOH folder %s is disabled usemohcustom=NO, MOH not set", mohfolder);
@@ -554,29 +771,42 @@ void RecGreet()
 }
 
 
-int Authenticate(char *password)
+int AuthenticatePassword(const char *password_plain)
 {
 
     DebugFunctionTrace(__FUNCTION__);
+    char authbuf[64] = {'\0'};
 
-    char syspass[32] = {'\0'};
-
-    // get password from DB
-
-    AGITool_get_variable(&agi, &res, password); //set by various callers (sysop, spy, etc)
-    strlcpy(syspass, res.data, sizeof(syspass));
-    if (strcmp(syspass, ""))
-    {
-        AGITool_exec(&agi, &res, "Playback", "silence/1");
-        AGITool_exec(&agi, &res, "Authenticate", syspass);
-        return atoi(res.result);
-    }
-    else
+    if (password_plain == NULL || password_plain[0] == '\0')
     {
         snprintf(vmsg, sizeof(vmsg), "Unable to find password in the database.");
         DebugFunctionMsg(__FUNCTION__, vmsg);
         return -1;
     }
+
+    strlcpy(authbuf, password_plain, sizeof(authbuf));
+    AGITool_exec(&agi, &res, "Playback", "silence/1");
+    AGITool_exec(&agi, &res, "Authenticate", authbuf);
+    return atoi(res.result);
+}
+
+int Authenticate(char *password)
+{
+
+    DebugFunctionTrace(__FUNCTION__);
+
+    if (!strcmp(password, "SYSPASS"))
+    {
+        return AuthenticatePassword(g_cluster_cfg.syspass);
+    }
+    if (!strcmp(password, "SPYPASS"))
+    {
+        return AuthenticatePassword(g_cluster_cfg.spy_pass);
+    }
+
+    snprintf(vmsg, sizeof(vmsg), "Authenticate: unknown password key %s", password);
+    DebugFunctionMsg(__FUNCTION__, vmsg);
+    return -1;
 }
 
 int GetRecOption()
@@ -918,25 +1148,21 @@ void OutRoute()
     char beep[4] = {'\0'};
     char busy[4] = {'\0'};
     char congested[4] = {'\0'};
-    char set_dynamic_features[4] = "NO";
+    char dfbuf[640] = {'\0'};
     int i;
     int last;
 
-    DBQuery("cluster", "pkey", myCluster, "chanmax,abstimeout,clusterclid");
-    strlcpy(clusterChanmax, rescols[0], sizeof(clusterChanmax));
-    strlcpy(clusterAbstimeout, rescols[1], sizeof(clusterAbstimeout));
-    strlcpy(myClusterclid, rescols[2], sizeof(myClusterclid));
+    strlcpy(clusterChanmax, g_cluster_cfg.chanmax_str, sizeof(clusterChanmax));
+    snprintf(clusterAbstimeout, sizeof(clusterAbstimeout), "%d", g_cluster_cfg.abstimeout_sec);
+    strlcpy(myClusterclid, g_cluster_cfg.clusterclid, sizeof(myClusterclid));
 
-    // Set dynamic features if necessary 
-    // *****   This feature should be removed.   It was for Asterisk Monitor which no longer exists */
-    AGITool_get_variable(&agi, &res, "SET_DYNAMIC_FEATURES"); // SET_DYNAMIC_FEATURES is set in the genarator
-    strlcpy(set_dynamic_features, res.data, sizeof(set_dynamic_features));
-    if (!strcmp(set_dynamic_features, "YES"))
+    /* cluster.dynamicfeatures is the Asterisk DYNAMIC_FEATURES string (replaces SET_DYNAMIC_FEATURES dialplan global). */
+    if (g_cluster_cfg.dynamicfeatures[0] != '\0')
     {
-        AGITool_exec(&agi, &res, "Set", "__DYNAMIC_FEATURES=clear#outpause#outresume");
+        snprintf(dfbuf, sizeof(dfbuf), "__DYNAMIC_FEATURES=%s", g_cluster_cfg.dynamicfeatures);
+        AGITool_exec(&agi, &res, "Set", dfbuf);
     }
-    // ******************************************************* */
-    
+
     
     /*
      * set timeout to the clusterAbstimeout (if present)...
@@ -1020,12 +1246,9 @@ void OutRoute()
 /**
  * This need to change for cluster independence
  */
-    AGITool_get_variable(&agi, &res, "PLAYBEEP"); // ** held in tenant - need to retrieve it play_beep
-    strlcpy(beep, res.data, sizeof(beep));
-    AGITool_get_variable(&agi, &res, "PLAYBUSY"); // ** held in tenant - need to retrieve it play_busy
-    strlcpy(busy, res.data, sizeof(busy));
-    AGITool_get_variable(&agi, &res, "PLAYCONGESTED"); // ** held in tenant - need to retrieve it play_congested
-    strlcpy(congested, res.data, sizeof(congested));
+    strlcpy(beep, g_cluster_cfg.playbeep, sizeof(beep));
+    strlcpy(busy, g_cluster_cfg.playbusy, sizeof(busy));
+    strlcpy(congested, g_cluster_cfg.playcongested, sizeof(congested));
     /*
      * set the first path (if we are balancing)
      */
@@ -1135,10 +1358,8 @@ void OutTrunk(char *key)
     char active[4] = {'\0'};
 
 
-    AGITool_get_variable(&agi, &res, "PLAYBUSY"); // ** held in tenant - need to retrieve it play_busy
-    strlcpy(busy, res.data, sizeof(busy));
-    AGITool_get_variable(&agi, &res, "PLAYCONGESTED"); // ** held in tenant - need to retrieve it play_congested
-    strlcpy(congested, res.data, sizeof(congested));
+    strlcpy(busy, g_cluster_cfg.playbusy, sizeof(busy));
+    strlcpy(congested, g_cluster_cfg.playcongested, sizeof(congested));
 
     strlcpy(active, DBQuery("trunks", "pkey", PARM_KEY, "active"), sizeof(active));
 
@@ -1217,10 +1438,8 @@ void OutVoip(char *key)
         strlcpy(peername, desc, sizeof(peername));
     }
 
-    AGITool_get_variable(&agi, &res, "VOIPMAX"); // held in Globals.  Maximum outbound VoIP calls
-    strlcpy(voipmax, res.data, sizeof(voipmax));
-    AGITool_get_variable(&agi, &res, "ALLOWHASHXFER"); // ** held in tenant - need to retrieve it allow_hash_xfer
-    strlcpy(allowhashxfer, res.data, sizeof(allowhashxfer));
+    strlcpy(voipmax, g_cluster_cfg.voipmax_str, sizeof(voipmax));
+    strlcpy(allowhashxfer, g_cluster_cfg.allowhashxfer, sizeof(allowhashxfer));
 
     if (strcmp(transform, ""))
     {
@@ -1267,9 +1486,8 @@ void OutVoip(char *key)
     {
         strlcat(dialString, "r", sizeof(dialString));
     }
-    DBQuery("globals", "pkey", "global", "CFWDPROGRESS,CFWDANSWER");
-    strlcpy(cfwdprogress, rescols[0], sizeof(cfwdprogress));
-    strlcpy(cfwdanswer, rescols[1], sizeof(cfwdanswer));
+    strlcpy(cfwdprogress, g_cluster_cfg.cfwd_progress, sizeof(cfwdprogress));
+    strlcpy(cfwdanswer, g_cluster_cfg.cfwd_answer, sizeof(cfwdanswer));
     if (rdnis_is_set)
     {
         if (!strcmp(cfwdprogress, "enabled"))
@@ -1336,8 +1554,7 @@ void LepDial()
         strlcat(vmbox, calledCluster, sizeof(vmbox));
     }
 
-    AGITool_get_variable(&agi, &res, "VOICEINSTR"); // ** held in tenant - need to retrieve it voice_instr
-    strlcpy(voiceinstr, res.data, sizeof(voiceinstr));
+    strlcpy(voiceinstr, g_cluster_cfg.voiceinstr, sizeof(voiceinstr));
     strlcpy(vmflags, ASTDLIM, sizeof(vmflags));
     if (!strcmp(voiceinstr, "NO"))
     {
@@ -1357,8 +1574,7 @@ void LepDial()
                 if (strcmp(agi_dnid, extension))
                 {
                     AGITool_exec(&agi, &res, "Playback", "silence/1");
-                    AGITool_get_variable(&agi, &res, "PLAYTRANSFER"); // ** held in tenant - need to retrieve it play_transfer
-                    strlcpy(transfer, res.data, sizeof(transfer));
+                    strlcpy(transfer, g_cluster_cfg.playtransfer, sizeof(transfer));
                     if (!strcmp(transfer, "YES"))
                     {
                         AGITool_exec(&agi, &res, "Playback", "pls-hold-while-try");
@@ -1468,8 +1684,7 @@ void LepDial()
             {
                 if (strcmp(agi_dnid, extension))
                 {
-                    AGITool_get_variable(&agi, &res, "BOUNCEALERT"); // ** held in tenant - need to retrieve it bounce_alert
-                    strlcpy(bouncealert, res.data, sizeof(bouncealert));
+                    strlcpy(bouncealert, g_cluster_cfg.bounce_alert, sizeof(bouncealert));
                     if (strcmp(bouncealert, ""))
                     {
                         AGITool_exec(&agi, &res, "SIPAddHeader", bouncealert);
@@ -1505,15 +1720,13 @@ void LepDial()
             if (strcmp(agi_dnid, extension))
             {
                 AGITool_exec(&agi, &res, "Playback", "silence/1");
-                AGITool_get_variable(&agi, &res, "PLAYTRANSFER"); // ** held in tenant - need to retrieve it play_transfer
-                strlcpy(transfer, res.data, sizeof(transfer));
+                strlcpy(transfer, g_cluster_cfg.playtransfer, sizeof(transfer));
                 if (!strcmp(transfer, "YES"))
                 {
                     AGITool_exec(&agi, &res, "Playback", "pls-hold-while-try");
                 };
 
-                AGITool_get_variable(&agi, &res, "BOUNCEALERT"); // ** held in tenant - need to retrieve it bounce_alert
-                strlcpy(bouncealert, res.data, sizeof(bouncealert));
+                strlcpy(bouncealert, g_cluster_cfg.bounce_alert, sizeof(bouncealert));
                 if (strcmp(bouncealert, ""))
                 {
                     AGITool_exec(&agi, &res, "SIPAddHeader", bouncealert);
@@ -1526,8 +1739,7 @@ void LepDial()
             }
             else
             {
-                AGITool_get_variable(&agi, &res, "BLINDBUSY"); // ** held in tenant - need to retrieve it blind_busy
-                strcpy(blindbusy, res.data);
+                strlcpy(blindbusy, g_cluster_cfg.blind_busy, sizeof(blindbusy));
                 if (strcmp(blindbusy, ""))
                 {
                     AGITool_set_priority(&agi, &res, 1);
@@ -1600,8 +1812,7 @@ void PrepDial(char *number, char *type, char *twin, char *vmbox)
         }
         else if (!strcmp(userRingDelay, ""))
         {
-            AGITool_get_variable(&agi, &res, "INTRINGDELAY"); // ** held in tenant - need to retrieve it int_ring_delay
-            strlcpy(intRingDelay, res.data, sizeof(intRingDelay));
+            strlcpy(intRingDelay, g_cluster_cfg.int_ring_delay, sizeof(intRingDelay));
         }
         else if (!strcmp(userRingDelay, "0"))
         {
@@ -1882,8 +2093,7 @@ char *CFCheck(char *type, char *number)
  *  VOICEINSTR is currently global.   It needs to move to Cluster or DB
  * ******************************************************
  */
-    AGITool_get_variable(&agi, &res, "VOICEINSTR"); // ** held in tenant - need to retrieve it voice_instr
-    strlcpy(voiceinstr, res.data, sizeof(voiceinstr));
+    strlcpy(voiceinstr, g_cluster_cfg.voiceinstr, sizeof(voiceinstr));
     strlcpy(vmflags, ASTDLIM, sizeof(vmflags));
 
     if (!strcmp(voiceinstr, "NO"))
@@ -1922,8 +2132,7 @@ char *CFCheck(char *type, char *number)
  */
         {
             AGITool_exec(&agi, &res, "Playback", "silence/1");
-            AGITool_get_variable(&agi, &res, "PLAYTRANSFER"); // ** held in tenant - need to retrieve it play_transfer
-            strlcpy(transfer, res.data, sizeof(transfer));
+            strlcpy(transfer, g_cluster_cfg.playtransfer, sizeof(transfer));
             if (!strcmp(transfer, "YES"))
             {
                 AGITool_exec(&agi, &res, "Playback", "pls-hold-while-try");
@@ -2184,13 +2393,11 @@ void Ingress()
     char transformclip[MAX_TRANSFORM_LEN] = {'\0'};
     char clicluster[MAX_CLUSTER_LEN] = {'\0'};
     char setcdrcmduser[64] = "CDR(userfield)=";
-    char set_dynamic_features[4] = "NO";
 
     /*
      *  check if we are at max inbound channels
      */
-    AGITool_get_variable(&agi, &res, "MAXIN"); // held in Globals - maximum inbound calls
-    strcpy(maxin, res.data);
+    strlcpy(maxin, g_cluster_cfg.maxin_str, sizeof(maxin));
     if (strcmp(maxin, ""))
     {
         AGITool_set_variable(&agi, &res, "GROUP(inbound)", "inbound");
@@ -2208,16 +2415,13 @@ void Ingress()
     strlcat(setcdrcmduser, PARM_KEY, sizeof(setcdrcmduser));
     AGITool_exec(&agi, &res, "Set", setcdrcmduser);
 
-/*
-    // Set dynamic features if necessary - SHOULD BE REMOVED.
-    AGITool_get_variable(&agi, &res, "SET_DYNAMIC_FEATURES"); // SET_DYNAMIC_FEATURES is held in Globals
-    strlcpy(set_dynamic_features, res.data, sizeof(set_dynamic_features));
-
-    if (!strcmp(set_dynamic_features, "YES"))
+    if (g_cluster_cfg.dynamicfeatures[0] != '\0')
     {
-        AGITool_exec(&agi, &res, "Set", "__DYNAMIC_FEATURES=clear#pause#resume");
+        char df_ingress[640];
+        snprintf(df_ingress, sizeof(df_ingress), "__DYNAMIC_FEATURES=%s", g_cluster_cfg.dynamicfeatures);
+        AGITool_exec(&agi, &res, "Set", df_ingress);
     }
-*/
+
     DBQuery("inroutes", "pkey", PARM_KEY, "technology,tag,inprefix,alertinfo,transformclip,moh,swoclip");
     strlcpy(technology, rescols[0], sizeof(technology));
     strlcpy(tag, rescols[1], sizeof(tag));
@@ -2228,11 +2432,9 @@ void Ingress()
     strlcpy(swoclip, rescols[6], sizeof(swoclip));
 
 
-    AGITool_get_variable(&agi, &res, "RINGDELAY"); // ** held in tenant - need to retrieve it ring_delay
-    strlcpy(ringDelay, res.data, sizeof(ringDelay));
+    strlcpy(ringDelay, g_cluster_cfg.ringdelay_str, sizeof(ringDelay));
 
-    AGITool_get_variable(&agi, &res, "LTERM"); // ** held in tenant - need to retrieve it lterm
-    strlcpy(lterm, res.data, sizeof(lterm));
+    strlcpy(lterm, g_cluster_cfg.lterm_str, sizeof(lterm));
 
     AGITool_set_variable(&agi, &res, "__MOH", moh);
 
@@ -2442,9 +2644,8 @@ void IVR(char *ivrname)
 
     strlcat(ivrsilence, "6", sizeof(ivrsilence));
 
-    DBQuery("globals", "pkey", "global", "IVRKEYWAIT,IVRDIGITWAIT");
-    strlcpy(ivrkeywait, rescols[0], sizeof(ivrkeywait));
-    strlcpy(ivrwork, rescols[1], sizeof(ivrwork));
+    strlcpy(ivrkeywait, g_cluster_cfg.ivr_key_wait, sizeof(ivrkeywait));
+    strlcpy(ivrwork, g_cluster_cfg.ivr_digit_wait_str, sizeof(ivrwork));
 
     if (strcmp(ivrkeywait, ""))
     {
