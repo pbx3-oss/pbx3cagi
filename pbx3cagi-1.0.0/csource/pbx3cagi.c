@@ -190,8 +190,8 @@ int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg)
         "SELECT abstimeout, voip_max, allow_hash_xfer, play_beep, play_busy, play_congested, "
         "play_transfer, voice_instr, bounce_alert, blind_busy, int_ring_delay, maxin, ringdelay, lterm, "
         "cfwd_progress, cfwd_answer, ivr_key_wait, ivr_digit_wait, syspass, spy_pass, dynamicfeatures, "
-        "clusterclid, chanmax, usemohcustom FROM cluster WHERE pkey='%s'",
-        esc);
+        "clusterclid, chanmax, usemohcustom FROM cluster WHERE pkey='%s' OR shortuid='%s'",
+        esc, esc);
 
     retval = sqlite3_open(SQLITEDB, &handle);
     if (retval)
@@ -1927,8 +1927,13 @@ char *SetRecord(char *key, char *compass)
 /**
  *   Check default recording setting from the cluster
  *   callrecord1    'in:None,OTR,OTRR,Inbound,Outbound,Both'
+ *   myCluster is the dialplan context = cluster.shortuid; load_cluster_cfg matches pkey OR shortuid.
  */
-    snprintf (myQuery,sizeof(myQuery),"SELECT callrecord_1 from cluster WHERE shortuid='%s'",myCluster);
+    {
+        char esc_cr[128];
+        escape_sql_literal(esc_cr, sizeof(esc_cr), myCluster);
+        snprintf(myQuery, sizeof(myQuery), "SELECT callrecord_1 FROM cluster WHERE shortuid='%s'", esc_cr);
+    }
     sqlQuery(myQuery);
     strlcpy(callRecord, rescols[0], sizeof(callRecord));
     snprintf(vmsg, sizeof(vmsg), "callrecord1 is %s",callRecord);
@@ -2590,11 +2595,15 @@ char *CheckTime(char *cluster)
     char clustermaster[8] = {'\0'};
     char clusterstate[8] = {'\0'};
     char clusterdboclo[8] = {'\0'};
+    char esc_ct[128];
 
-    DBQuery("Cluster", "pkey", myCluster, "masteroclo,oclo,routeoverride");
+    escape_sql_literal(esc_ct, sizeof(esc_ct), myCluster);
+    snprintf(myQuery, sizeof(myQuery),
+             "SELECT masteroclo, oclo, routeoverride FROM cluster WHERE pkey='%s' OR shortuid='%s'", esc_ct, esc_ct);
+    sqlQuery(myQuery);
     strlcpy(clustermaster, rescols[0], sizeof(clustermaster));
     strlcpy(clusterstate, rescols[1], sizeof(clusterstate));
-    strlcpy(routeoverride, rescols[3], sizeof(routeoverride));
+    strlcpy(routeoverride, rescols[2], sizeof(routeoverride));
 
     if (strcmp(routeoverride, ""))
     {
@@ -2612,7 +2621,10 @@ char *CheckTime(char *cluster)
     {
         return "CLOSED";
     }
-    strlcpy(clusterstate, DBQuery("Cluster", "pkey", myCluster, "oclo"), sizeof(clusterstate));
+    snprintf(myQuery, sizeof(myQuery),
+             "SELECT oclo FROM cluster WHERE pkey='%s' OR shortuid='%s'", esc_ct, esc_ct);
+    sqlQuery(myQuery);
+    strlcpy(clusterstate, rescols[0], sizeof(clusterstate));
     if (!strcmp(clusterstate, "OPEN"))
     {
         return "OPEN";
