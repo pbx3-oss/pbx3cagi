@@ -893,9 +893,9 @@ void AgentLogin()
         {
             // check if it's a valid agent
             snprintf(agent, sizeof(agent), "%s", res.result);
-            if (strcmp(DBQuery("agent", "pkey", agent, "pkey"), ""))
+            if (strcmp(sqlSelectEq("agent", "pkey", agent, "pkey"), ""))
             {
-                strlcpy(agentpasswd, DBQuery("agent", "pkey", agent, "passwd"), sizeof(agentpasswd));
+                strlcpy(agentpasswd, sqlSelectEq("agent", "pkey", agent, "passwd"), sizeof(agentpasswd));
                 AGITool_exec(&agi, &res, "Authenticate", agentpasswd);
                 if (atoi(res.result) == 0)
                 {
@@ -914,7 +914,7 @@ void AgentLogin()
                         for (i = 1; i < 7; i++)
                         {
                             snprintf(agentqueue, sizeof(agentqueue), "queue%i", i);
-                            strlcpy(queuename, DBQuery("agent", "pkey", oldagent, agentqueue), sizeof(queuename));
+                            strlcpy(queuename, sqlSelectEq("agent", "pkey", oldagent, agentqueue), sizeof(queuename));
                             if (strcmp(queuename, "None"))
                             {
                                 //								snprintf (queuearg, sizeof(queuearg), "%s%sLocal/%s@queues",queuename,ASTDLIM,extenAgent);
@@ -936,7 +936,7 @@ void AgentLogin()
                     for (i = 1; i < 7; i++)
                     {
                         snprintf(agentqueue, sizeof(agentqueue), "queue%i", i);
-                        strlcpy(queuename, DBQuery("agent", "pkey", agent, agentqueue), sizeof(queuename));
+                        strlcpy(queuename, sqlSelectEq("agent", "pkey", agent, agentqueue), sizeof(queuename));
                         if (strcmp(queuename, "None"))
                         {
                             snprintf(queuearg, sizeof(queuearg), "%s,%s,,,Agent/%s",
@@ -996,7 +996,7 @@ void AgentLogout()
     strlcat(statechan, callerid, sizeof(statechan));
 
     strcpy(agent, DBGet(f_eAgent, callerid));
-    strlcpy(agentpasswd, DBQuery("agent", "pkey", agent, "passwd"), sizeof(agentpasswd));
+    strlcpy(agentpasswd, sqlSelectEq("agent", "pkey", agent, "passwd"), sizeof(agentpasswd));
 
     // check if they are logged in - if not just exit
 
@@ -1014,7 +1014,7 @@ void AgentLogout()
     for (i = 1; i < 7; i++)
     {
         snprintf(agentqueue, sizeof(agentqueue), "queue%i", i);
-        strlcpy(queuename, DBQuery("agent", "pkey", agent, agentqueue), sizeof(queuename));
+        strlcpy(queuename, sqlSelectEq("agent", "pkey", agent, agentqueue), sizeof(queuename));
         if (strcmp(queuename, "None"))
         {
             snprintf(queuearg, sizeof(queuearg), "%s,%s", queuename, agentchan);
@@ -1212,7 +1212,7 @@ void OutRoute()
         }
     }
 
-    DBQuery("Route", "pkey", PARM_KEY, "auth,path1,path2,path3,path4,alternate,strategy");
+    sqlSelectEq("Route", "pkey", PARM_KEY, "auth,path1,path2,path3,path4,alternate,strategy");
 
     strlcpy(auth, rescols[0], sizeof(auth));
     strlcpy(path[0], rescols[1], sizeof(path[0]));
@@ -1256,7 +1256,7 @@ void OutRoute()
      */
     for (i = 0; i < 3; i++)
     {       
-        strlcpy(active, DBQuery("trunks", "pkey", path[last], "active"), sizeof(active));
+        strlcpy(active, sqlSelectEq("trunks", "pkey", path[last], "active"), sizeof(active));
         if (!strcmp(active, "YES"))
         {
             if (!strncmp(strategy, "balance", 7))
@@ -1337,7 +1337,7 @@ void OutTrunk(char *key)
 
     char active[4] = {'\0'};
 
-    strlcpy(active, DBQuery("trunks", "pkey", PARM_KEY, "active"), sizeof(active));
+    strlcpy(active, sqlSelectEq("trunks", "pkey", PARM_KEY, "active"), sizeof(active));
 
 
     if (!strcmp(active, "YES"))
@@ -1395,7 +1395,7 @@ void OutVoip(char *key)
     char preSel[MAX_PRESEL_LEN] = {'\0'};
     char recRet[8] = {'\0'};
 
-    DBQuery("trunks", "pkey", key, "username,peername,callprogress,desc,transform,match,technology");
+    sqlSelectEq("trunks", "pkey", key, "username,peername,callprogress,desc,transform,match,technology");
     strlcpy(username, rescols[0], sizeof(username)); 
     strlcpy(peername, rescols[1], sizeof(peername)); 
     strlcpy(callprogress, rescols[3], sizeof(callprogress));
@@ -1504,7 +1504,7 @@ void LepDial()
     AGITool_get_variable(&agi, &res, "BLINDTRANSFER");  //set in extensions.conf
     strlcpy(blindtransfer, res.data, sizeof(blindtransfer));
 
-    //    DBQuery("IPphone", "pkey", extension, "dvrvmail,extalert,cluster");
+    //    sqlSelectEq("IPphone", "pkey", extension, "dvrvmail,extalert,cluster");
     snprintf(myQuery, sizeof(myQuery), "SELECT dvrvmail,extalert,cluster from ipphone WHERE id='%s' AND cluster='%s'", extension, myCluster);
     sqlQuery(myQuery);
 
@@ -2010,12 +2010,12 @@ void Page()
     // Page all extensions
     if (!strcmp(ext, ""))
     {
-        strlcpy(dialStr, DBQuery("page", "pkey", "pageall", "pagegroup"), sizeof(dialStr));
+        strlcpy(dialStr, sqlSelectEq("page", "pkey", "pageall", "pagegroup"), sizeof(dialStr));
         AGITool_exec(&agi, &res, "SIPAddHeader", sipHeader);
         AGITool_exec(&agi, &res, "Page", dialStr);
     }
     // Page single extension
-    else if (!strcmp(ext, DBQuery("IPphone", "pkey", ext, "pkey")))
+    else if (!strcmp(ext, sqlSelectEq("IPphone", "pkey", ext, "pkey")))
     {
         strlcpy(dialStr, SIPDRIVER, sizeof(dialStr));
         strlcat(dialStr, "/", sizeof(dialStr));
@@ -2024,9 +2024,9 @@ void Page()
         AGITool_exec(&agi, &res, "Page", dialStr);
     }
     // Page a group of extensions
-    else if (!strcmp(ext, DBQuery("speed", "pkey", speedKey, "pkey")))
+    else if (!strcmp(ext, sqlSelectEq("speed", "pkey", speedKey, "pkey")))
     {
-        strlcpy(dialStr, DBQuery("speed", "pkey", speedKey, "pagegroup"), sizeof(dialStr));
+        strlcpy(dialStr, sqlSelectEq("speed", "pkey", speedKey, "pagegroup"), sizeof(dialStr));
         AGITool_exec(&agi, &res, "SIPAddHeader", sipHeader);
         AGITool_exec(&agi, &res, "Page", dialStr);
     }
@@ -2377,7 +2377,7 @@ void Ingress()
         AGITool_exec(&agi, &res, "Set", df_ingress);
     }
 
-    DBQuery("inroutes", "pkey", PARM_KEY, "technology,tag,inprefix,alertinfo,transformclip,moh,swoclip");
+    sqlSelectEq("inroutes", "pkey", PARM_KEY, "technology,tag,inprefix,alertinfo,transformclip,moh,swoclip");
     strlcpy(technology, rescols[0], sizeof(technology));
     strlcpy(tag, rescols[1], sizeof(tag));
     strlcpy(prefix, rescols[2], sizeof(prefix));
@@ -2413,7 +2413,7 @@ void Ingress()
         {
             if (strcmp(callerid, PARM_KEY))
             {
-                strlcpy(clicluster, DBQuery("inroutes", "pkey", callerid, "cluster"), sizeof(clicluster));
+                strlcpy(clicluster, sqlSelectEq("inroutes", "pkey", callerid, "cluster"), sizeof(clicluster));
                 if (!strcmp(myCluster, clicluster))
                 {
                     AGITool_set_priority(&agi, &res, 1);
@@ -2484,7 +2484,7 @@ void CheckState(char *remotenum)
     char cluster[MAX_CLUSTER_LEN] = {'\0'};
     char rc_char[8] = {'\0'};
 
-    DBQuery("inroutes", "pkey", remotenum, "cluster,openroute,closeroute");
+    sqlSelectEq("inroutes", "pkey", remotenum, "cluster,openroute,closeroute");
     strlcpy(cluster, rescols[0], sizeof(cluster));
     strlcpy(openroute, rescols[3], sizeof(openroute));
     strlcpy(closeroute, rescols[4], sizeof(closeroute));
@@ -2612,7 +2612,7 @@ void IVR(char *ivrname)
     if (strcmp(ivrname, ""))
     {
         // get the number of options for the menu and construct the option string
-        DBQuery("ivrmenu", "pkey", PARM_KEY, "option0,option1,option2,option3,option4,option5,option6,option7,option8,option9,option10,option11");
+        sqlSelectEq("ivrmenu", "pkey", PARM_KEY, "option0,option1,option2,option3,option4,option5,option6,option7,option8,option9,option10,option11");
         for (i = 0; i <= 11; i++)
         {
             snprintf(option, sizeof(option), "%d", i);
@@ -2636,7 +2636,7 @@ void IVR(char *ivrname)
         AGITool_exec(&agi, &res, "Wait", "0.5");
         AGITool_answer(&agi, &res);
 
-        strlcpy(greetnum, DBQuery("ivrmenu", "pkey", PARM_KEY, "greetnum"), sizeof(greetnum));
+        strlcpy(greetnum, sqlSelectEq("ivrmenu", "pkey", PARM_KEY, "greetnum"), sizeof(greetnum));
         snprintf(msg, sizeof(msg), "%s%s/usergreeting%s", SOUNDIR, myCluster, greetnum);
         /*
          * We can use stream or get_data, depending upon whether the user wants the
@@ -2650,7 +2650,7 @@ void IVR(char *ivrname)
         // here is the stream command, it only listens for
         // one digit press.
 
-        if (strcmp(DBQuery("ivrmenu", "pkey", PARM_KEY, "listenforext"), "YES"))
+        if (strcmp(sqlSelectEq("ivrmenu", "pkey", PARM_KEY, "listenforext"), "YES"))
         {
             AGITool_stream_file(&agi, &res, msg, optionStr, 0);
             if (strcmp(optionStr, "") && atoi(res.result))
@@ -2694,7 +2694,7 @@ void IVR(char *ivrname)
         }
 
         // If no key is pressed then perform the timeout action
-        if (!strcmp(DBQuery("ivrmenu", "pkey", PARM_KEY, "timeout"), "Repeat Message"))
+        if (!strcmp(sqlSelectEq("ivrmenu", "pkey", PARM_KEY, "timeout"), "Repeat Message"))
         {
             IVR(ivrname);
             return;
@@ -2747,18 +2747,18 @@ void IVRAction(char *menu, char *press)
     //  handle case of timeout being requested
     if (!strcmp(dbOption, "timeout"))
     {
-        strlcpy(action, DBQuery("ivrmenu", "pkey", menu, "timeout"), sizeof(action));
+        strlcpy(action, sqlSelectEq("ivrmenu", "pkey", menu, "timeout"), sizeof(action));
     }
     else
     { // handle ordinary case
-        strlcpy(action, DBQuery("ivrmenu", "pkey", menu, dbOption), sizeof(action));
+        strlcpy(action, sqlSelectEq("ivrmenu", "pkey", menu, dbOption), sizeof(action));
         // set Alert-info if present
-        strlcpy(alert, DBQuery("ivrmenu", "pkey", menu, dbAlert), sizeof(alert));
+        strlcpy(alert, sqlSelectEq("ivrmenu", "pkey", menu, dbAlert), sizeof(alert));
         if (strcmp(alert, ""))
         {
             AGITool_exec(&agi, &res, "SIPAddHeader", alert);
         }
-        strcpy(tagID, DBQuery("ivrmenu", "pkey", menu, tag));
+        strcpy(tagID, sqlSelectEq("ivrmenu", "pkey", menu, tag));
         if (strcmp(tagID, ""))
         {
             strlcpy(calleridname, tagID, sizeof(calleridname));
@@ -2813,101 +2813,22 @@ void DBDel(char *family, char *key)
     AGITool_database_del(&agi, &res, family, key);
 }
 
-char *DBQuery(char *table, char *wherecol, char *whereval, char *column)
+char *sqlSelectEq(char *table, char *wherecol, char *whereval, char *column)
 {
     DebugFunctionTrace(__FUNCTION__);
 
     if (debug)
     {
-        snprintf(vmsg, sizeof(vmsg), "Trace Entered DBQuery with table=%s, wherecol=%s, whereval=%s, col=%s",
+        snprintf(vmsg, sizeof(vmsg), "Trace Entered sqlSelectEq with table=%s, wherecol=%s, whereval=%s, col=%s",
                  table, wherecol, whereval, column);
         DebugFunctionMsg(__FUNCTION__, vmsg);
     }
 
-    char query[256] = {'\0'};
-    char *pQ = &query[0];
-    char *pVal = &rescols[0][0];
-    char whereStmnt[64] = {'\0'};
-    int retval, i;
+    char query[512] = {'\0'};
 
-    sqlite3 *handle;
-    sqlite3_stmt *stmt;
-
-    retval = sqlite3_open(SQLITEDB, &handle);
-    if (retval)
-    {
-        snprintf(vmsg, sizeof(vmsg), "Database connection failed, retval is %i", retval);
-        DebugFunctionMsg(__FUNCTION__, vmsg);
-        return "-1";
-    }
-
-    snprintf(whereStmnt, sizeof(whereStmnt), "%s=\'%s\'", wherecol, whereval);
-    snprintf(query, sizeof(query), "SELECT %s FROM %s WHERE %s", column, table, whereStmnt);
-
-    if (debug)
-    {
-        snprintf(vmsg, sizeof(vmsg), "Executing query %s", query);
-        DebugFunctionMsg(__FUNCTION__, vmsg);
-    }
-
-    for (i = 0; i < 3; i++)
-    {
-        retval = sqlite3_prepare_v2(handle, pQ, -1, &stmt, 0);
-        if (retval == SQLITE_OK)
-        {
-            break;
-        }
-        if (retval == SQLITE_LOCKED || retval == SQLITE_BUSY)
-        {
-            snprintf(vmsg, sizeof(vmsg), "Database LOCK! retry in .5s");
-            DebugFunctionMsg(__FUNCTION__, vmsg);
-            AGITool_exec(&agi, &res, "Wait", "0.5");
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    if (retval)
-    {
-        snprintf(vmsg, sizeof(vmsg), "Database Prepare failed, retval is %i, query is %s", retval, query);
-        DebugFunctionMsg(__FUNCTION__, vmsg);
-        sqlite3_close(handle);
-        return pVal;
-    }
-
-    retval = sqlite3_step(stmt);
-
-    if (debug)
-    {
-        snprintf(vmsg, sizeof(vmsg), "Query returned %i columns", sqlite3_column_count(stmt));
-        DebugFunctionMsg(__FUNCTION__, vmsg);
-    }
-
-    if (sqlite3_column_count(stmt) > 0)
-    {
-        for (i = 0; i < sqlite3_column_count(stmt); i++)
-        {
-            if (sqlite3_column_text(stmt, i))
-            {
-                strlcpy(rescols[i], (const char *)sqlite3_column_text(stmt, i), sizeof(rescols[i]));
-            }
-            else
-            {
-                strcpy(rescols[i], "");
-            }
-            if (debug)
-            {
-                snprintf(vmsg, sizeof(vmsg), "DBQcol %i returned %s", i, rescols[i]);
-                DebugFunctionMsg(__FUNCTION__, vmsg);
-            }
-        }
-    }
-
-    sqlite3_finalize(stmt);
-    sqlite3_close(handle);
-    return pVal;
+    /* Simple SELECT-equals helper; execution path is sqlQuery(). */
+    snprintf(query, sizeof(query), "SELECT %s FROM %s WHERE %s='%s'", column, table, wherecol, whereval);
+    return sqlQuery(query);
 }
 
 char *sqlQuery(char *query)
@@ -3148,7 +3069,7 @@ void outboundClip(char *key)
 	char clidwork[MAX_EXT_LEN] = {'\0'};
 
 	// backstop CLID if all else fails - take the trunk's CLID (if it exists)
-	strcpy(clidline, DBQuery("trunks", "pkey", key, "callerid"));
+	strcpy(clidline, sqlSelectEq("trunks", "pkey", key, "callerid"));
 	if (strcmp(clidline, "")) {
 		strcpy(clidwork, clidline);
 		sprintf (vmsg,"trunks CLID  %s found for outbound call, using key %s", clidwork, key);
@@ -3174,11 +3095,11 @@ void outboundClip(char *key)
 
 	//if there is an extension CLID or RDNIS CLID then it trumps the line and cluster CLID 
 	if (caller_is_local) {
-		strcpy(clidphone, DBQuery("IPphone", "pkey", callerid, "callerid"));		
+		strcpy(clidphone, sqlSelectEq("IPphone", "pkey", callerid, "callerid"));		
 	}
 	// if the RDNIS is local, set its CLID into clidphone
 	else if (rdnis_is_local) {
-		strcpy(clidphone, DBQuery("IPphone", "pkey", rdnis, "callerid"));
+		strcpy(clidphone, sqlSelectEq("IPphone", "pkey", rdnis, "callerid"));
 	}
 
 	// Only take the extension clid if it is longer than 5 characters (i.e. - not an extension number)
@@ -3208,7 +3129,7 @@ void outboundClip(char *key)
 		if (caller_is_local) {
 			strcpy(clidwork, clidline);
 		}  
-		else if (!strcmp(DBQuery("globals", "pkey", "global", "CFWDEXTRNRULE"), "enabled")) {
+		else if (!strcmp(sqlSelectEq("globals", "pkey", "global", "CFWDEXTRNRULE"), "enabled")) {
 
 		}
 	}
