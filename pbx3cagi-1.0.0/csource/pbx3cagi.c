@@ -123,6 +123,7 @@ static void cluster_cfg_apply_defaults(cluster_cfg_t *cfg)
     memset(cfg, 0, sizeof(*cfg));
     cfg->abstimeout_sec = 14400;
     strlcpy(cfg->voipmax_str, "30", sizeof(cfg->voipmax_str));
+    strlcpy(cfg->callrecord_1, "None", sizeof(cfg->callrecord_1));
     strlcpy(cfg->allowhashxfer, "enabled", sizeof(cfg->allowhashxfer));
     strlcpy(cfg->playbeep, "YES", sizeof(cfg->playbeep));
     strlcpy(cfg->playbusy, "YES", sizeof(cfg->playbusy));
@@ -141,6 +142,46 @@ static void cluster_cfg_apply_defaults(cluster_cfg_t *cfg)
     strlcpy(cfg->spy_pass, "3333", sizeof(cfg->spy_pass));
     strlcpy(cfg->chanmax_str, "3", sizeof(cfg->chanmax_str));
     strlcpy(cfg->usemohcustom, "NO", sizeof(cfg->usemohcustom));
+    strlcpy(cfg->masteroclo, "AUTO", sizeof(cfg->masteroclo));
+    cfg->oclo[0] = '\0';
+    cfg->routeoverride[0] = '\0';
+}
+
+static sqlite3 *g_sqlite_handle = NULL;
+
+static void sqlCloseSharedHandle(void)
+{
+    if (g_sqlite_handle != NULL)
+    {
+        sqlite3_close(g_sqlite_handle);
+        g_sqlite_handle = NULL;
+    }
+}
+
+static sqlite3 *sqlGetSharedHandle(void)
+{
+    int retval;
+
+    if (g_sqlite_handle != NULL)
+    {
+        return g_sqlite_handle;
+    }
+
+    retval = sqlite3_open(SQLITEDB, &g_sqlite_handle);
+    if (retval)
+    {
+        if (g_sqlite_handle != NULL)
+        {
+            sqlite3_close(g_sqlite_handle);
+            g_sqlite_handle = NULL;
+        }
+        snprintf(vmsg, sizeof(vmsg), "Database connection failed, retval is %i", retval);
+        DebugFunctionMsg(__FUNCTION__, vmsg);
+        return NULL;
+    }
+
+    atexit(sqlCloseSharedHandle);
+    return g_sqlite_handle;
 }
 
 static void escape_sql_literal(char *out, size_t outlen, const char *in)
@@ -190,14 +231,14 @@ int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg)
         "SELECT abstimeout, voip_max, allow_hash_xfer, play_beep, play_busy, play_congested, "
         "play_transfer, voice_instr, bounce_alert, blind_busy, int_ring_delay, maxin, ringdelay, lterm, "
         "cfwd_progress, cfwd_answer, ivr_key_wait, ivr_digit_wait, syspass, spy_pass, dynamicfeatures, "
-        "clusterclid, chanmax, usemohcustom FROM cluster WHERE pkey='%s' OR shortuid='%s'",
+        "clusterclid, chanmax, usemohcustom, callrecord_1, masteroclo, oclo, routeoverride "
+        "FROM cluster WHERE pkey='%s' OR shortuid='%s'",
         esc, esc);
 
-    retval = sqlite3_open(SQLITEDB, &handle);
-    if (retval)
+    handle = sqlGetSharedHandle();
+    if (handle == NULL)
     {
-        snprintf(vmsg, sizeof(vmsg), "load_cluster_cfg: sqlite open failed %i", retval);
-        DebugFunctionMsg(__FUNCTION__, vmsg);
+        DebugFunctionMsg(__FUNCTION__, "load_cluster_cfg: sqlite open failed");
         return -1;
     }
 
@@ -222,7 +263,6 @@ int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg)
     {
         snprintf(vmsg, sizeof(vmsg), "load_cluster_cfg: prepare failed %i", retval);
         DebugFunctionMsg(__FUNCTION__, vmsg);
-        sqlite3_close(handle);
         return -1;
     }
 
@@ -232,7 +272,6 @@ int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg)
         snprintf(vmsg, sizeof(vmsg), "load_cluster_cfg: no cluster row for pkey=%s", cluster_pkey);
         DebugFunctionMsg(__FUNCTION__, vmsg);
         sqlite3_finalize(stmt);
-        sqlite3_close(handle);
         return -1;
     }
 
@@ -329,10 +368,25 @@ int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg)
         const unsigned char *t = sqlite3_column_text(stmt, 23);
         strlcpy(cfg->usemohcustom, t ? (const char *)t : "NO", sizeof(cfg->usemohcustom));
     }
+    {
+        const unsigned char *t = sqlite3_column_text(stmt, 24);
+        strlcpy(cfg->callrecord_1, t ? (const char *)t : "None", sizeof(cfg->callrecord_1));
+    }
+    {
+        const unsigned char *t = sqlite3_column_text(stmt, 25);
+        strlcpy(cfg->masteroclo, t ? (const char *)t : "AUTO", sizeof(cfg->masteroclo));
+    }
+    {
+        const unsigned char *t = sqlite3_column_text(stmt, 26);
+        strlcpy(cfg->oclo, t ? (const char *)t : "", sizeof(cfg->oclo));
+    }
+    {
+        const unsigned char *t = sqlite3_column_text(stmt, 27);
+        strlcpy(cfg->routeoverride, t ? (const char *)t : "", sizeof(cfg->routeoverride));
+    }
 
     cfg->loaded = 1;
     sqlite3_finalize(stmt);
-    sqlite3_close(handle);
     return 0;
 }
 
@@ -1887,13 +1941,7 @@ char *SetRecord(char *key, char *compass)
  *   callrecord1    'in:None,OTR,OTRR,Inbound,Outbound,Both'
  *   myCluster is the dialplan context = cluster.shortuid; load_cluster_cfg matches pkey OR shortuid.
  */
-    {
-        char esc_cr[128];
-        escape_sql_literal(esc_cr, sizeof(esc_cr), myCluster);
-        snprintf(myQuery, sizeof(myQuery), "SELECT callrecord_1 FROM cluster WHERE shortuid='%s'", esc_cr);
-    }
-    sqlQuery(myQuery);
-    strlcpy(callRecord, rescols[0], sizeof(callRecord));
+    strlcpy(callRecord, g_cluster_cfg.callrecord_1, sizeof(callRecord));
     snprintf(vmsg, sizeof(vmsg), "callrecord1 is %s",callRecord);
     DebugFunctionMsg(__FUNCTION__, vmsg);
 
@@ -2537,22 +2585,11 @@ char *CheckTime(char *cluster)
 
     DebugFunctionTrace(__FUNCTION__);
 
-    char clustermaster[8] = {'\0'};
-    char clusterstate[8] = {'\0'};
     char clusterdboclo[8] = {'\0'};
-    char esc_ct[128];
 
-    escape_sql_literal(esc_ct, sizeof(esc_ct), myCluster);
-    snprintf(myQuery, sizeof(myQuery),
-             "SELECT masteroclo, oclo, routeoverride FROM cluster WHERE pkey='%s' OR shortuid='%s'", esc_ct, esc_ct);
-    sqlQuery(myQuery);
-    strlcpy(clustermaster, rescols[0], sizeof(clustermaster));
-    strlcpy(clusterstate, rescols[1], sizeof(clusterstate));
-    strlcpy(routeoverride, rescols[2], sizeof(routeoverride));
-
-    if (strcmp(routeoverride, ""))
+    if (strcmp(g_cluster_cfg.routeoverride, ""))
     {
-        strlcpy(closeroute, routeoverride, sizeof(closeroute));
+        strlcpy(closeroute, g_cluster_cfg.routeoverride, sizeof(closeroute));
         return "CLOSED";
     }
 
@@ -2566,16 +2603,12 @@ char *CheckTime(char *cluster)
     {
         return "CLOSED";
     }
-    snprintf(myQuery, sizeof(myQuery),
-             "SELECT oclo FROM cluster WHERE pkey='%s' OR shortuid='%s'", esc_ct, esc_ct);
-    sqlQuery(myQuery);
-    strlcpy(clusterstate, rescols[0], sizeof(clusterstate));
-    if (!strcmp(clusterstate, "OPEN"))
+    if (!strcmp(g_cluster_cfg.oclo, "OPEN"))
     {
         return "OPEN";
     }
 
-    if (!strcmp(clusterstate, "CLOSED"))
+    if (!strcmp(g_cluster_cfg.oclo, "CLOSED"))
     {
         return "CLOSED";
     }
@@ -2847,7 +2880,7 @@ char *sqlQuery(char *query)
 
     if (debug)
     {
-        snprintf(vmsg, sizeof(vmsg), "Trace Entered sqlQuery with query=%s", myQuery);
+        snprintf(vmsg, sizeof(vmsg), "Trace Entered sqlQuery with query=%s", query);
         DebugFunctionMsg(__FUNCTION__, vmsg);
     }
 
@@ -2858,11 +2891,9 @@ char *sqlQuery(char *query)
     sqlite3 *handle;
     sqlite3_stmt *stmt;
 
-    retval = sqlite3_open(SQLITEDB, &handle);
-    if (retval)
+    handle = sqlGetSharedHandle();
+    if (handle == NULL)
     {
-        snprintf(vmsg, sizeof(vmsg), "Database connection failed, retval is %i", retval);
-        DebugFunctionMsg(__FUNCTION__, vmsg);
         return "-1";
     }
 
@@ -2895,7 +2926,6 @@ char *sqlQuery(char *query)
     {
         snprintf(vmsg, sizeof(vmsg), "Database Prepare failed, retval is %i, query is %s", retval, query);
         DebugFunctionMsg(__FUNCTION__, vmsg);
-        sqlite3_close(handle);
         return pVal;
     }
 
@@ -2928,7 +2958,6 @@ char *sqlQuery(char *query)
     }
 
     sqlite3_finalize(stmt);
-    sqlite3_close(handle);
     return pVal;
 }
 

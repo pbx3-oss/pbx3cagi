@@ -51,6 +51,7 @@ typedef struct cluster_cfg {
     int loaded;
     int abstimeout_sec;
     char voipmax_str[16];
+    char callrecord_1[32];
     char allowhashxfer[32];
     char playbeep[8];
     char playbusy[8];
@@ -73,6 +74,9 @@ typedef struct cluster_cfg {
     char clusterclid[MAX_EXT_LEN];
     char chanmax_str[16];
     char usemohcustom[8];
+    char masteroclo[16];
+    char oclo[16];
+    char routeoverride[32];
 } cluster_cfg_t;
 
 extern cluster_cfg_t g_cluster_cfg;
