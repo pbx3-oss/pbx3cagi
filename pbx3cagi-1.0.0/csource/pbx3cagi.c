@@ -63,8 +63,8 @@ char myQuery[255] = {'\0'};          // regular SQL query
 char setcdrcmd[64] = "CHANNEL(accountcode)=";
 
 
-long debug = FALSE;
-int abstimeint = 14400; // default (4 hours)						// debug on/off
+long debug = FALSE; // debug on/off
+int abstimeint = 14400; // default (4 hours)
 int myargc;             // numargs
 int switchdig;          // function number
 int callee_is_local = FALSE;
@@ -1140,20 +1140,13 @@ void OutRoute()
     char strategy[8] = {'\0'};
     char auth[4] = {'\0'};
     char setlast[64] = "GLOBAL(";
-    char clusterChanmax[8] = {'\0'};
     char clusterGroup[64] = {'\0'};
     char clusterCount[64] = {'\0'};
-    char clusterAbstimeout[16] = {'\0'};
     char extenAbstimeout[16] = {'\0'};
-    char beep[4] = {'\0'};
-    char busy[4] = {'\0'};
-    char congested[4] = {'\0'};
     char dfbuf[640] = {'\0'};
     int i;
     int last;
 
-    strlcpy(clusterChanmax, g_cluster_cfg.chanmax_str, sizeof(clusterChanmax));
-    snprintf(clusterAbstimeout, sizeof(clusterAbstimeout), "%d", g_cluster_cfg.abstimeout_sec);
     strlcpy(myClusterclid, g_cluster_cfg.clusterclid, sizeof(myClusterclid));
 
     /* cluster.dynamicfeatures is the Asterisk DYNAMIC_FEATURES string (replaces SET_DYNAMIC_FEATURES dialplan global). */
@@ -1165,20 +1158,15 @@ void OutRoute()
 
     
     /*
-     * set timeout to the clusterAbstimeout (if present)...
-     * ...and check if the cluster is barred (clusterAbstimeout=0)
-     *
+     * Cluster absolute timeout (tenant); 0 means barred.
      */
-    if (strcmp(clusterAbstimeout, ""))
+    if (g_cluster_cfg.abstimeout_sec == 0)
     {
-        if (atoi(clusterAbstimeout) == 0)
-        {
-            AGITool_exec(&agi, &res, "Playtones", "busy");
-            AGITool_exec(&agi, &res, "Busy", "");
-            return;
-        }
-        abstimeint = atoi(clusterAbstimeout);
+        AGITool_exec(&agi, &res, "Playtones", "busy");
+        AGITool_exec(&agi, &res, "Busy", "");
+        return;
     }
+    abstimeint = g_cluster_cfg.abstimeout_sec;
 
     /*
      * set timeout to the extenAbstimeout (if present)...
@@ -1210,13 +1198,13 @@ void OutRoute()
      * leave the check to the global voipmax if this is a voip call
      *
      */
-    if (strcmp(clusterChanmax, ""))
+    if (g_cluster_cfg.chanmax_str[0] != '\0')
     {
         snprintf(clusterGroup, sizeof(clusterGroup), "GROUP(%s)", myCluster);
         AGITool_set_variable(&agi, &res, clusterGroup, myCluster);
         snprintf(clusterCount, sizeof(clusterCount), "GROUP_COUNT(%s)", myCluster);
         AGITool_get_variable(&agi, &res, clusterCount); // clusterCount is the number of active outbound calls
-        if (atoi(res.data) > atoi(clusterChanmax))
+        if (atoi(res.data) > atoi(g_cluster_cfg.chanmax_str))
         {
             AGITool_exec(&agi, &res, "Playtones", "busy");
             AGITool_exec(&agi, &res, "Busy", "");
@@ -1243,12 +1231,6 @@ void OutRoute()
             return;
         }
     }
-/**
- * This need to change for cluster independence
- */
-    strlcpy(beep, g_cluster_cfg.playbeep, sizeof(beep));
-    strlcpy(busy, g_cluster_cfg.playbusy, sizeof(busy));
-    strlcpy(congested, g_cluster_cfg.playcongested, sizeof(congested));
     /*
      * set the first path (if we are balancing)
      */
@@ -1296,7 +1278,7 @@ void OutRoute()
         }
         if (!strcmp(res.data, "BUSY"))
         {
-            if (!strncmp(busy, "YES", 3))
+            if (!strncmp(g_cluster_cfg.playbusy, "YES", 3))
             {
                 AGITool_exec(&agi, &res, "Playtones", "busy");
                 AGITool_exec(&agi, &res, "Busy", "");
@@ -1315,7 +1297,7 @@ void OutRoute()
             return;
         }
 
-        if (!strncmp(beep, "YES", 3) && strcmp(path[last], "None"))
+        if (!strncmp(g_cluster_cfg.playbeep, "YES", 3) && strcmp(path[last], "None"))
         {
             AGITool_exec(&agi, &res, "Playback", "beep");
         }
@@ -1334,7 +1316,7 @@ void OutRoute()
         return;
     }
 
-    if (!strncmp(congested, "YES", 3))
+    if (!strncmp(g_cluster_cfg.playcongested, "YES", 3))
     {
         AGITool_exec(&agi, &res, "Playtones", "congestion");
         AGITool_exec(&agi, &res, "Congestion", "");
@@ -1353,13 +1335,7 @@ void OutTrunk(char *key)
 
     DebugFunctionTrace(__FUNCTION__);
 
-    char busy[4] = {'\0'};
-    char congested[4] = {'\0'};
     char active[4] = {'\0'};
-
-
-    strlcpy(busy, g_cluster_cfg.playbusy, sizeof(busy));
-    strlcpy(congested, g_cluster_cfg.playcongested, sizeof(congested));
 
     strlcpy(active, DBQuery("trunks", "pkey", PARM_KEY, "active"), sizeof(active));
 
@@ -1373,7 +1349,7 @@ void OutTrunk(char *key)
         }
         else if (!strcmp(res.data, "BUSY"))
         {
-            if (!strncmp(busy, "YES", 3))
+            if (!strncmp(g_cluster_cfg.playbusy, "YES", 3))
             {
                 AGITool_exec(&agi, &res, "Playtones", "busy");
                 AGITool_exec(&agi, &res, "Busy", "");
@@ -1387,7 +1363,7 @@ void OutTrunk(char *key)
         }
         else
         {
-            if (!strncmp(congested, "YES", 3))
+            if (!strncmp(g_cluster_cfg.playcongested, "YES", 3))
             {
                 AGITool_exec(&agi, &res, "Playtones", "congestion");
                 AGITool_exec(&agi, &res, "Congestion", "");
@@ -1417,11 +1393,7 @@ void OutVoip(char *key)
     char transform[MAX_TRANSFORM_LIST_LEN] = {'\0'};
     char number[MAX_EXT_LEN] = {'\0'};
     char preSel[MAX_PRESEL_LEN] = {'\0'};
-    char voipmax[8] = {'\0'};
-    char allowhashxfer[16] = {'\0'};
     char recRet[8] = {'\0'};
-    char cfwdprogress[4] = {'\0'};
-    char cfwdanswer[4] = {'\0'};
 
     DBQuery("trunks", "pkey", key, "username,peername,callprogress,desc,transform,match,technology");
     strlcpy(username, rescols[0], sizeof(username)); 
@@ -1437,9 +1409,6 @@ void OutVoip(char *key)
     {
         strlcpy(peername, desc, sizeof(peername));
     }
-
-    strlcpy(voipmax, g_cluster_cfg.voipmax_str, sizeof(voipmax));
-    strlcpy(allowhashxfer, g_cluster_cfg.allowhashxfer, sizeof(allowhashxfer));
 
     if (strcmp(transform, ""))
     {
@@ -1477,7 +1446,7 @@ void OutVoip(char *key)
     strlcat(dialString, ASTDLIM, sizeof(dialString));
     strlcat(dialString, ASTDLIM, sizeof(dialString));
 
-    if (!strcmp(allowhashxfer, "enabled"))
+    if (!strcmp(g_cluster_cfg.allowhashxfer, "enabled"))
     {
         strlcat(dialString, "T", sizeof(dialString));
     }
@@ -1486,15 +1455,14 @@ void OutVoip(char *key)
     {
         strlcat(dialString, "r", sizeof(dialString));
     }
-    strlcpy(cfwdprogress, g_cluster_cfg.cfwd_progress, sizeof(cfwdprogress));
-    strlcpy(cfwdanswer, g_cluster_cfg.cfwd_answer, sizeof(cfwdanswer));
+    /* Call-forward to external: optional early media + answer before Dial (tenant cluster cfg). */
     if (rdnis_is_set)
     {
-        if (!strcmp(cfwdprogress, "enabled"))
+        if (!strcmp(g_cluster_cfg.cfwd_progress, "enabled"))
         {
             strlcat(dialString, "r", sizeof(dialString));
         }
-        if (!strcmp(cfwdanswer, "enabled"))
+        if (!strcmp(g_cluster_cfg.cfwd_answer, "enabled"))
         {
             AGITool_answer(&agi, &res);
         }
@@ -1502,7 +1470,7 @@ void OutVoip(char *key)
 
     AGITool_set_variable(&agi, &res, "GROUP()", "OUTBOUND_GROUP");
     AGITool_get_variable(&agi, &res, "GROUP_COUNT()"); // GROUP_COUNT() is the number of active outbound calls
-    if (atoi(res.data) <= atoi(voipmax))
+    if (atoi(res.data) <= atoi(g_cluster_cfg.voipmax_str))
     {
         strlcpy(recRet, SetRecord(callerid, "Outbound"), sizeof(recRet));
         strlcat(dialString, recRet, sizeof(dialString));
@@ -1522,7 +1490,6 @@ void LepDial()
 
     char vmbox[64] = {'\0'};
     char blindtransfer[MAX_EXT_LEN] = {'\0'};
-    char blindbusy[MAX_EXT_LEN] = {'\0'};
     char transferer[MAX_EXT_LEN] = {'\0'};
     char cellphone[MAX_EXT_LEN] = {'\0'};
     char celltwindial[MAX_EXT_LEN] = {'\0'};
@@ -1530,12 +1497,9 @@ void LepDial()
     char calleridsave[MAX_EXT_LEN] = {'\0'};
     char dstatus[16] = {'\0'};
     char vmflags[4] = {'\0'};
-    char voiceinstr[8] = {'\0'};
     char calledCluster[MAX_CLUSTER_LEN] = {'\0'};
     char includeClusters[8192] = {'\0'};
     char extalert[128] = {'\0'};
-    char bouncealert[128] = {'\0'};
-    char transfer[4] = {'\0'};
 
     AGITool_get_variable(&agi, &res, "BLINDTRANSFER");  //set in extensions.conf
     strlcpy(blindtransfer, res.data, sizeof(blindtransfer));
@@ -1554,9 +1518,8 @@ void LepDial()
         strlcat(vmbox, calledCluster, sizeof(vmbox));
     }
 
-    strlcpy(voiceinstr, g_cluster_cfg.voiceinstr, sizeof(voiceinstr));
     strlcpy(vmflags, ASTDLIM, sizeof(vmflags));
-    if (!strcmp(voiceinstr, "NO"))
+    if (!strcmp(g_cluster_cfg.voiceinstr, "NO"))
     {
         strlcat(vmflags, "s", sizeof(vmflags));
     }
@@ -1574,8 +1537,7 @@ void LepDial()
                 if (strcmp(agi_dnid, extension))
                 {
                     AGITool_exec(&agi, &res, "Playback", "silence/1");
-                    strlcpy(transfer, g_cluster_cfg.playtransfer, sizeof(transfer));
-                    if (!strcmp(transfer, "YES"))
+                    if (!strcmp(g_cluster_cfg.playtransfer, "YES"))
                     {
                         AGITool_exec(&agi, &res, "Playback", "pls-hold-while-try");
                     }
@@ -1684,10 +1646,9 @@ void LepDial()
             {
                 if (strcmp(agi_dnid, extension))
                 {
-                    strlcpy(bouncealert, g_cluster_cfg.bounce_alert, sizeof(bouncealert));
-                    if (strcmp(bouncealert, ""))
+                    if (g_cluster_cfg.bounce_alert[0] != '\0')
                     {
-                        AGITool_exec(&agi, &res, "SIPAddHeader", bouncealert);
+                        AGITool_exec(&agi, &res, "SIPAddHeader", g_cluster_cfg.bounce_alert);
                     }
                     strlcpy(calleridsave, callerid, sizeof(calleridsave));
                     strlcpy(callerid, "R", sizeof(callerid));
@@ -1720,16 +1681,14 @@ void LepDial()
             if (strcmp(agi_dnid, extension))
             {
                 AGITool_exec(&agi, &res, "Playback", "silence/1");
-                strlcpy(transfer, g_cluster_cfg.playtransfer, sizeof(transfer));
-                if (!strcmp(transfer, "YES"))
+                if (!strcmp(g_cluster_cfg.playtransfer, "YES"))
                 {
                     AGITool_exec(&agi, &res, "Playback", "pls-hold-while-try");
-                };
+                }
 
-                strlcpy(bouncealert, g_cluster_cfg.bounce_alert, sizeof(bouncealert));
-                if (strcmp(bouncealert, ""))
+                if (g_cluster_cfg.bounce_alert[0] != '\0')
                 {
-                    AGITool_exec(&agi, &res, "SIPAddHeader", bouncealert);
+                    AGITool_exec(&agi, &res, "SIPAddHeader", g_cluster_cfg.bounce_alert);
                 }
                 strlcpy(transferer, pBtr, sizeof(transferer));
                 AGITool_set_priority(&agi, &res, 1);
@@ -1739,11 +1698,10 @@ void LepDial()
             }
             else
             {
-                strlcpy(blindbusy, g_cluster_cfg.blind_busy, sizeof(blindbusy));
-                if (strcmp(blindbusy, ""))
+                if (g_cluster_cfg.blind_busy[0] != '\0')
                 {
                     AGITool_set_priority(&agi, &res, 1);
-                    AGITool_set_extension(&agi, &res, blindbusy);
+                    AGITool_set_extension(&agi, &res, g_cluster_cfg.blind_busy);
                     AGITool_set_context(&agi, &res, myClusterContext);
                     return;
                 }
@@ -2090,18 +2048,15 @@ char *CFCheck(char *type, char *number)
     char rdnis_string[32] = "CALLERID(rdnis)=";
     char vmflags[4] = {'\0'};
     char vmbox[MAX_EXT_LEN] = {'\0'};
-    char voiceinstr[8] = {'\0'};
     char speedKey[32] = {'\0'};
-    char transfer[4] = {'\0'};
 /**
  * ***********************N.B.***************************
  *  VOICEINSTR is currently global.   It needs to move to Cluster or DB
  * ******************************************************
  */
-    strlcpy(voiceinstr, g_cluster_cfg.voiceinstr, sizeof(voiceinstr));
     strlcpy(vmflags, ASTDLIM, sizeof(vmflags));
 
-    if (!strcmp(voiceinstr, "NO"))
+    if (!strcmp(g_cluster_cfg.voiceinstr, "NO"))
     {
         strlcat(vmflags, "su", sizeof(vmflags));
     }
@@ -2137,8 +2092,7 @@ char *CFCheck(char *type, char *number)
  */
         {
             AGITool_exec(&agi, &res, "Playback", "silence/1");
-            strlcpy(transfer, g_cluster_cfg.playtransfer, sizeof(transfer));
-            if (!strcmp(transfer, "YES"))
+            if (!strcmp(g_cluster_cfg.playtransfer, "YES"))
             {
                 AGITool_exec(&agi, &res, "Playback", "pls-hold-while-try");
             }
@@ -2387,13 +2341,10 @@ void Ingress()
     DebugFunctionTrace(__FUNCTION__);
 
     char technology[32] = {'\0'};
-    char ringDelay[8] = {'\0'};
     char tag[64] = {'\0'};
     char swoclip[8] = {'\0'};
     char prefix[32] = {'\0'};
     char moh[16] = {'\0'};
-    char maxin[4] = {'\0'};
-    char lterm[4] = {'\0'};
     char alertinfo[128] = {'\0'};
     char transformclip[MAX_TRANSFORM_LEN] = {'\0'};
     char clicluster[MAX_CLUSTER_LEN] = {'\0'};
@@ -2402,13 +2353,12 @@ void Ingress()
     /*
      *  check if we are at max inbound channels
      */
-    strlcpy(maxin, g_cluster_cfg.maxin_str, sizeof(maxin));
-    if (strcmp(maxin, ""))
+    if (g_cluster_cfg.maxin_str[0] != '\0')
     {
         AGITool_set_variable(&agi, &res, "GROUP(inbound)", "inbound");
         AGITool_get_variable(&agi, &res, "GROUP_COUNT(inbound)"); // GROUP_COUNT(inbound) is the number of active inbound calls
 
-        if (atoi(res.data) > atoi(maxin))
+        if (atoi(res.data) > atoi(g_cluster_cfg.maxin_str))
         {
             AGITool_exec(&agi, &res, "Playtones", "busy");
             AGITool_exec(&agi, &res, "Busy", "");
@@ -2435,11 +2385,6 @@ void Ingress()
     strlcpy(transformclip, rescols[4], sizeof(transformclip));
     strlcpy(moh, rescols[5], sizeof(moh));
     strlcpy(swoclip, rescols[6], sizeof(swoclip));
-
-
-    strlcpy(ringDelay, g_cluster_cfg.ringdelay_str, sizeof(ringDelay));
-
-    strlcpy(lterm, g_cluster_cfg.lterm_str, sizeof(lterm));
 
     AGITool_set_variable(&agi, &res, "__MOH", moh);
 
@@ -2498,7 +2443,7 @@ void Ingress()
         AGITool_exec(&agi, &res, "Set", clidstrng);
     }
 
-    if (strcmp(lterm, "YES"))
+    if (strcmp(g_cluster_cfg.lterm_str, "YES"))
     {
         AGITool_answer(&agi, &res);
         // AGITool_exec(&agi,&res,"Ringing","");
@@ -2506,18 +2451,18 @@ void Ingress()
     // cause a ring for voip lines if requested
     if (!strcmp(technology, "SIP"))
     {
-        if (strcmp(ringDelay, "0"))
+        if (strcmp(g_cluster_cfg.ringdelay_str, "0"))
         {
             AGITool_exec(&agi, &res, "Ringing", "");
-            AGITool_exec(&agi, &res, "Wait", ringDelay);
+            AGITool_exec(&agi, &res, "Wait", g_cluster_cfg.ringdelay_str);
         }
     }
     if (!strcmp(technology, "IAX2"))
     {
-        if (strcmp(ringDelay, "0"))
+        if (strcmp(g_cluster_cfg.ringdelay_str, "0"))
         {
             AGITool_exec(&agi, &res, "Ringing", "");
-            AGITool_exec(&agi, &res, "Wait", ringDelay);
+            AGITool_exec(&agi, &res, "Wait", g_cluster_cfg.ringdelay_str);
         }
     }
 
@@ -2648,33 +2593,20 @@ void IVR(char *ivrname)
     char option[4] = {'\0'};
     char optionStr[15] = {'\0'};
     char dtmf[8] = {'\0'};
-    char ivrwork[8] = {'\0'};
     char ivrsilence[16] = "silence/";
-    char ivrkeywait[4] = "6";
     int ivrdigitwait = 6000;
     int i;
 
     strlcat(ivrsilence, "6", sizeof(ivrsilence));
 
-    strlcpy(ivrkeywait, g_cluster_cfg.ivr_key_wait, sizeof(ivrkeywait));
-    strlcpy(ivrwork, g_cluster_cfg.ivr_digit_wait_str, sizeof(ivrwork));
-
-    if (strcmp(ivrkeywait, ""))
+    if (g_cluster_cfg.ivr_key_wait[0] != '\0')
     {
-        strlcat(ivrsilence, ivrkeywait, sizeof(ivrsilence));
+        strlcat(ivrsilence, g_cluster_cfg.ivr_key_wait, sizeof(ivrsilence));
     }
 
-    /* suggested fix for above
-        strcpy (ivrwork,DBQuery("globals", "pkey", "global", "IVRKEYWAIT"));
-        if (strcmp(ivrwork, "")) {
-            strcpy(ivrkeywait,ivrwork);
-        }
-        strcat(ivrsilence,ivrkeywait);
-    */
-
-    if (strcmp(ivrwork, ""))
+    if (g_cluster_cfg.ivr_digit_wait_str[0] != '\0')
     {
-        ivrdigitwait = atoi(ivrwork);
+        ivrdigitwait = atoi(g_cluster_cfg.ivr_digit_wait_str);
     }
 
     if (strcmp(ivrname, ""))
