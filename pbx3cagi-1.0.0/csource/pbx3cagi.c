@@ -950,11 +950,9 @@ void AgentLogin()
         {
             // check if it's a valid agent
             snprintf(agent, sizeof(agent), "%s", res.result);
-            snprintf(myQuery, sizeof(myQuery), "SELECT pkey FROM agent WHERE pkey='%s'", agent);
-            if (strcmp(sqlQuery(myQuery), ""))
+            if (strcmp(sqlQueryBind1("SELECT pkey FROM agent WHERE pkey=?", agent), ""))
             {
-                snprintf(myQuery, sizeof(myQuery), "SELECT passwd FROM agent WHERE pkey='%s'", agent);
-                strlcpy(agentpasswd, sqlQuery(myQuery), sizeof(agentpasswd));
+                strlcpy(agentpasswd, sqlQueryBind1("SELECT passwd FROM agent WHERE pkey=?", agent), sizeof(agentpasswd));
                 AGITool_exec(&agi, &res, "Authenticate", agentpasswd);
                 if (atoi(res.result) == 0)
                 {
@@ -973,8 +971,8 @@ void AgentLogin()
                         for (i = 1; i < 7; i++)
                         {
                             snprintf(agentqueue, sizeof(agentqueue), "queue%i", i);
-                            snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM agent WHERE pkey='%s'", agentqueue, oldagent);
-                            strlcpy(queuename, sqlQuery(myQuery), sizeof(queuename));
+                            snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM agent WHERE pkey=?", agentqueue);
+                            strlcpy(queuename, sqlQueryBind1(myQuery, oldagent), sizeof(queuename));
                             if (strcmp(queuename, "None"))
                             {
                                 //								snprintf (queuearg, sizeof(queuearg), "%s%sLocal/%s@queues",queuename,ASTDLIM,extenAgent);
@@ -996,8 +994,8 @@ void AgentLogin()
                     for (i = 1; i < 7; i++)
                     {
                         snprintf(agentqueue, sizeof(agentqueue), "queue%i", i);
-                        snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM agent WHERE pkey='%s'", agentqueue, agent);
-                        strlcpy(queuename, sqlQuery(myQuery), sizeof(queuename));
+                        snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM agent WHERE pkey=?", agentqueue);
+                        strlcpy(queuename, sqlQueryBind1(myQuery, agent), sizeof(queuename));
                         if (strcmp(queuename, "None"))
                         {
                             snprintf(queuearg, sizeof(queuearg), "%s,%s,,,Agent/%s",
@@ -1057,8 +1055,7 @@ void AgentLogout()
     strlcat(statechan, callerid, sizeof(statechan));
 
     strcpy(agent, DBGet(f_eAgent, callerid));
-    snprintf(myQuery, sizeof(myQuery), "SELECT passwd FROM agent WHERE pkey='%s'", agent);
-    strlcpy(agentpasswd, sqlQuery(myQuery), sizeof(agentpasswd));
+    strlcpy(agentpasswd, sqlQueryBind1("SELECT passwd FROM agent WHERE pkey=?", agent), sizeof(agentpasswd));
 
     // check if they are logged in - if not just exit
 
@@ -1076,8 +1073,8 @@ void AgentLogout()
     for (i = 1; i < 7; i++)
     {
         snprintf(agentqueue, sizeof(agentqueue), "queue%i", i);
-        snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM agent WHERE pkey='%s'", agentqueue, agent);
-        strlcpy(queuename, sqlQuery(myQuery), sizeof(queuename));
+        snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM agent WHERE pkey=?", agentqueue);
+        strlcpy(queuename, sqlQueryBind1(myQuery, agent), sizeof(queuename));
         if (strcmp(queuename, "None"))
         {
             snprintf(queuearg, sizeof(queuearg), "%s,%s", queuename, agentchan);
@@ -1274,8 +1271,7 @@ void OutRoute()
         }
     }
 
-    snprintf(myQuery, sizeof(myQuery), "SELECT auth,path1,path2,path3,path4,alternate,strategy FROM Route WHERE pkey='%s'", PARM_KEY);
-    sqlQuery(myQuery);
+    sqlQueryBind1("SELECT auth,path1,path2,path3,path4,alternate,strategy FROM Route WHERE pkey=?", PARM_KEY);
 
     strlcpy(auth, rescols[0], sizeof(auth));
     strlcpy(path[0], rescols[1], sizeof(path[0]));
@@ -1319,8 +1315,7 @@ void OutRoute()
      */
     for (i = 0; i < 3; i++)
     {       
-        snprintf(myQuery, sizeof(myQuery), "SELECT active FROM trunks WHERE pkey='%s'", path[last]);
-        strlcpy(active, sqlQuery(myQuery), sizeof(active));
+        strlcpy(active, sqlQueryBind1("SELECT active FROM trunks WHERE pkey=?", path[last]), sizeof(active));
         if (!strcmp(active, "YES"))
         {
             if (!strncmp(strategy, "balance", 7))
@@ -1401,8 +1396,7 @@ void OutTrunk(char *key)
 
     char active[4] = {'\0'};
 
-    snprintf(myQuery, sizeof(myQuery), "SELECT active FROM trunks WHERE pkey='%s'", PARM_KEY);
-    strlcpy(active, sqlQuery(myQuery), sizeof(active));
+    strlcpy(active, sqlQueryBind1("SELECT active FROM trunks WHERE pkey=?", PARM_KEY), sizeof(active));
 
 
     if (!strcmp(active, "YES"))
@@ -1460,8 +1454,7 @@ void OutVoip(char *key)
     char preSel[MAX_PRESEL_LEN] = {'\0'};
     char recRet[8] = {'\0'};
 
-    snprintf(myQuery, sizeof(myQuery), "SELECT username,peername,callprogress,desc,transform,match,technology FROM trunks WHERE pkey='%s'", key);
-    sqlQuery(myQuery);
+    sqlQueryBind1("SELECT username,peername,callprogress,desc,transform,match,technology FROM trunks WHERE pkey=?", key);
     strlcpy(username, rescols[0], sizeof(username)); 
     strlcpy(peername, rescols[1], sizeof(peername)); 
     strlcpy(callprogress, rescols[3], sizeof(callprogress));
@@ -1975,8 +1968,7 @@ char *SetRecord(char *key, char *compass)
  *  add the queuename and agent (if any)
  */
         strcpy(filename, key);
-        snprintf(myQuery, sizeof(myQuery), "SELECT devicerec from Queue WHERE pkey='%s' and cluster = '%s'", agi_dnid,myCluster);
-        sqlQuery(myQuery);
+        sqlQueryBind2("SELECT devicerec FROM Queue WHERE pkey=? AND cluster=?", agi_dnid, myCluster);
         strlcpy(devicerec, rescols[0], sizeof(devicerec));        
     }
 
@@ -2067,16 +2059,15 @@ void Page()
     // Page all extensions
     if (!strcmp(ext, ""))
     {
-        snprintf(myQuery, sizeof(myQuery), "SELECT pagegroup FROM page WHERE pkey='pageall'");
-        strlcpy(dialStr, sqlQuery(myQuery), sizeof(dialStr));
+        sqlQueryBind1("SELECT pagegroup FROM page WHERE pkey=?", "pageall");
+        strlcpy(dialStr, rescols[0], sizeof(dialStr));
         AGITool_exec(&agi, &res, "SIPAddHeader", sipHeader);
         AGITool_exec(&agi, &res, "Page", dialStr);
     }
     // Page single extension
     else
     {
-        snprintf(myQuery, sizeof(myQuery), "SELECT pkey FROM IPphone WHERE pkey='%s'", ext);
-        if (!strcmp(ext, sqlQuery(myQuery)))
+        if (!strcmp(ext, sqlQueryBind1("SELECT pkey FROM IPphone WHERE pkey=?", ext)))
         {
             strlcpy(dialStr, SIPDRIVER, sizeof(dialStr));
             strlcat(dialStr, "/", sizeof(dialStr));
@@ -2087,11 +2078,9 @@ void Page()
         // Page a group of extensions
         else
         {
-            snprintf(myQuery, sizeof(myQuery), "SELECT pkey FROM speed WHERE pkey='%s'", speedKey);
-            if (!strcmp(ext, sqlQuery(myQuery)))
+            if (!strcmp(ext, sqlQueryBind1("SELECT pkey FROM speed WHERE pkey=?", speedKey)))
             {
-                snprintf(myQuery, sizeof(myQuery), "SELECT pagegroup FROM speed WHERE pkey='%s'", speedKey);
-                strlcpy(dialStr, sqlQuery(myQuery), sizeof(dialStr));
+                strlcpy(dialStr, sqlQueryBind1("SELECT pagegroup FROM speed WHERE pkey=?", speedKey), sizeof(dialStr));
                 AGITool_exec(&agi, &res, "SIPAddHeader", sipHeader);
                 AGITool_exec(&agi, &res, "Page", dialStr);
             }
@@ -2444,8 +2433,7 @@ void Ingress()
         AGITool_exec(&agi, &res, "Set", df_ingress);
     }
 
-    snprintf(myQuery, sizeof(myQuery), "SELECT technology,tag,inprefix,alertinfo,transformclip,moh,swoclip FROM inroutes WHERE pkey='%s'", PARM_KEY);
-    sqlQuery(myQuery);
+    sqlQueryBind1("SELECT technology,tag,inprefix,alertinfo,transformclip,moh,swoclip FROM inroutes WHERE pkey=?", PARM_KEY);
     strlcpy(technology, rescols[0], sizeof(technology));
     strlcpy(tag, rescols[1], sizeof(tag));
     strlcpy(prefix, rescols[2], sizeof(prefix));
@@ -2481,8 +2469,7 @@ void Ingress()
         {
             if (strcmp(callerid, PARM_KEY))
             {
-                snprintf(myQuery, sizeof(myQuery), "SELECT cluster FROM inroutes WHERE pkey='%s'", callerid);
-                strlcpy(clicluster, sqlQuery(myQuery), sizeof(clicluster));
+                strlcpy(clicluster, sqlQueryBind1("SELECT cluster FROM inroutes WHERE pkey=?", callerid), sizeof(clicluster));
                 if (!strcmp(myCluster, clicluster))
                 {
                     AGITool_set_priority(&agi, &res, 1);
@@ -2553,8 +2540,7 @@ void CheckState(char *remotenum)
     char cluster[MAX_CLUSTER_LEN] = {'\0'};
     char rc_char[8] = {'\0'};
 
-    snprintf(myQuery, sizeof(myQuery), "SELECT cluster,openroute,closeroute FROM inroutes WHERE pkey='%s'", remotenum);
-    sqlQuery(myQuery);
+    sqlQueryBind1("SELECT cluster,openroute,closeroute FROM inroutes WHERE pkey=?", remotenum);
     strlcpy(cluster, rescols[0], sizeof(cluster));
     strlcpy(openroute, rescols[3], sizeof(openroute));
     strlcpy(closeroute, rescols[4], sizeof(closeroute));
@@ -2667,8 +2653,7 @@ void IVR(char *ivrname)
     if (strcmp(ivrname, ""))
     {
         // get the number of options for the menu and construct the option string
-        snprintf(myQuery, sizeof(myQuery), "SELECT option0,option1,option2,option3,option4,option5,option6,option7,option8,option9,option10,option11 FROM ivrmenu WHERE pkey='%s'", PARM_KEY);
-        sqlQuery(myQuery);
+        sqlQueryBind1("SELECT option0,option1,option2,option3,option4,option5,option6,option7,option8,option9,option10,option11 FROM ivrmenu WHERE pkey=?", PARM_KEY);
         for (i = 0; i <= 11; i++)
         {
             snprintf(option, sizeof(option), "%d", i);
@@ -2692,8 +2677,7 @@ void IVR(char *ivrname)
         AGITool_exec(&agi, &res, "Wait", "0.5");
         AGITool_answer(&agi, &res);
 
-        snprintf(myQuery, sizeof(myQuery), "SELECT greetnum FROM ivrmenu WHERE pkey='%s'", PARM_KEY);
-        strlcpy(greetnum, sqlQuery(myQuery), sizeof(greetnum));
+        strlcpy(greetnum, sqlQueryBind1("SELECT greetnum FROM ivrmenu WHERE pkey=?", PARM_KEY), sizeof(greetnum));
         snprintf(msg, sizeof(msg), "%s%s/usergreeting%s", SOUNDIR, myCluster, greetnum);
         /*
          * We can use stream or get_data, depending upon whether the user wants the
@@ -2707,8 +2691,7 @@ void IVR(char *ivrname)
         // here is the stream command, it only listens for
         // one digit press.
 
-        snprintf(myQuery, sizeof(myQuery), "SELECT listenforext FROM ivrmenu WHERE pkey='%s'", PARM_KEY);
-        if (strcmp(sqlQuery(myQuery), "YES"))
+        if (strcmp(sqlQueryBind1("SELECT listenforext FROM ivrmenu WHERE pkey=?", PARM_KEY), "YES"))
         {
             AGITool_stream_file(&agi, &res, msg, optionStr, 0);
             if (strcmp(optionStr, "") && atoi(res.result))
@@ -2752,8 +2735,7 @@ void IVR(char *ivrname)
         }
 
         // If no key is pressed then perform the timeout action
-        snprintf(myQuery, sizeof(myQuery), "SELECT timeout FROM ivrmenu WHERE pkey='%s'", PARM_KEY);
-        if (!strcmp(sqlQuery(myQuery), "Repeat Message"))
+        if (!strcmp(sqlQueryBind1("SELECT timeout FROM ivrmenu WHERE pkey=?", PARM_KEY), "Repeat Message"))
         {
             IVR(ivrname);
             return;
@@ -2806,22 +2788,21 @@ void IVRAction(char *menu, char *press)
     //  handle case of timeout being requested
     if (!strcmp(dbOption, "timeout"))
     {
-        snprintf(myQuery, sizeof(myQuery), "SELECT timeout FROM ivrmenu WHERE pkey='%s'", menu);
-        strlcpy(action, sqlQuery(myQuery), sizeof(action));
+        strlcpy(action, sqlQueryBind1("SELECT timeout FROM ivrmenu WHERE pkey=?", menu), sizeof(action));
     }
     else
     { // handle ordinary case
-        snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM ivrmenu WHERE pkey='%s'", dbOption, menu);
-        strlcpy(action, sqlQuery(myQuery), sizeof(action));
+        snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM ivrmenu WHERE pkey=?", dbOption);
+        strlcpy(action, sqlQueryBind1(myQuery, menu), sizeof(action));
         // set Alert-info if present
-        snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM ivrmenu WHERE pkey='%s'", dbAlert, menu);
-        strlcpy(alert, sqlQuery(myQuery), sizeof(alert));
+        snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM ivrmenu WHERE pkey=?", dbAlert);
+        strlcpy(alert, sqlQueryBind1(myQuery, menu), sizeof(alert));
         if (strcmp(alert, ""))
         {
             AGITool_exec(&agi, &res, "SIPAddHeader", alert);
         }
-        snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM ivrmenu WHERE pkey='%s'", tag, menu);
-        strcpy(tagID, sqlQuery(myQuery));
+        snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM ivrmenu WHERE pkey=?", tag);
+        strcpy(tagID, sqlQueryBind1(myQuery, menu));
         if (strcmp(tagID, ""))
         {
             strlcpy(calleridname, tagID, sizeof(calleridname));
@@ -2876,16 +2857,14 @@ void DBDel(char *family, char *key)
     AGITool_database_del(&agi, &res, family, key);
 }
 
+/**
+ * Execute a fully-formed SQL string (no bound parameters).
+ * Prefer sqlQueryBind1 / sqlQueryBind2 for any user or external data in the WHERE clause.
+ */
 char *sqlQuery(char *query)
 {
     //
-    //
-    //	How to call this function
-    //
-    //	snprintf (myQuery,sizeof(myQuery),"SELECT id from cluster WHERE pkey='%s'",myCluster);
-    //  sqlQuery(myQuery);
-    //
-    //  Useful for more complex SQL
+    //  Rare: static / generated SQL with no ? placeholders. Most reads use sqlQueryBind*.
     //
 
     DebugFunctionTrace(__FUNCTION__);
@@ -3214,8 +3193,7 @@ void outboundClip(char *key)
 	char clidwork[MAX_EXT_LEN] = {'\0'};
 
 	// backstop CLID if all else fails - take the trunk's CLID (if it exists)
-    snprintf(myQuery, sizeof(myQuery), "SELECT callerid FROM trunks WHERE pkey='%s'", key);
-	strcpy(clidline, sqlQuery(myQuery));
+	strcpy(clidline, sqlQueryBind1("SELECT callerid FROM trunks WHERE pkey=?", key));
 	if (strcmp(clidline, "")) {
 		strcpy(clidwork, clidline);
 		sprintf (vmsg,"trunks CLID  %s found for outbound call, using key %s", clidwork, key);
@@ -3241,13 +3219,11 @@ void outboundClip(char *key)
 
 	//if there is an extension CLID or RDNIS CLID then it trumps the line and cluster CLID 
 	if (caller_is_local) {
-        snprintf(myQuery, sizeof(myQuery), "SELECT callerid FROM IPphone WHERE pkey='%s'", callerid);
-		strcpy(clidphone, sqlQuery(myQuery));		
+		strcpy(clidphone, sqlQueryBind1("SELECT callerid FROM IPphone WHERE pkey=?", callerid));		
 	}
 	// if the RDNIS is local, set its CLID into clidphone
 	else if (rdnis_is_local) {
-        snprintf(myQuery, sizeof(myQuery), "SELECT callerid FROM IPphone WHERE pkey='%s'", rdnis);
-		strcpy(clidphone, sqlQuery(myQuery));
+		strcpy(clidphone, sqlQueryBind1("SELECT callerid FROM IPphone WHERE pkey=?", rdnis));
 	}
 
 	// Only take the extension clid if it is longer than 5 characters (i.e. - not an extension number)
