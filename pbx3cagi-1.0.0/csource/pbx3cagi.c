@@ -2951,8 +2951,8 @@ char *sqlQuery(char *query)
             }
             if (debug)
             {
-                snprintf(vmsg, sizeof(vmsg), "DBQcol %i returned %s", i, rescols[i]);
-                consoleMsg(vmsg, 9);
+                snprintf(vmsg, sizeof(vmsg), "sqlQuery col[%i] value='%s'", i, rescols[i]);
+                DebugFunctionMsg(__FUNCTION__, vmsg);
             }
         }
     }
