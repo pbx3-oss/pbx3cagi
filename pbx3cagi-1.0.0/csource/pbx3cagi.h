@@ -145,7 +145,6 @@ char* GetDBProp(char* key, char* prop);
 //void SetDBProp(char* key, char* prop, char* val);
 char* GetKeys(char* type);
 void DialBack();
-char* sqlSelectEq(char* table, char* wherecol, char* whereval, char* col);
 char* DBQueryKeys(char* table);
 char* sqlQuery(char* myQuery);
 void sig_handler(int signum);
