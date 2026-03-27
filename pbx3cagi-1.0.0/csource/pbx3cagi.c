@@ -2542,8 +2542,8 @@ void CheckState(char *remotenum)
 
     sqlQueryBind1("SELECT cluster,openroute,closeroute FROM inroutes WHERE pkey=?", remotenum);
     strlcpy(cluster, rescols[0], sizeof(cluster));
-    strlcpy(openroute, rescols[3], sizeof(openroute));
-    strlcpy(closeroute, rescols[4], sizeof(closeroute));
+    strlcpy(openroute, rescols[1], sizeof(openroute));
+    strlcpy(closeroute, rescols[2], sizeof(closeroute));
 
 /**
  * Check the master timers first...
