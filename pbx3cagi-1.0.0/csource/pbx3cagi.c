@@ -1559,7 +1559,7 @@ void LepDial()
     strlcpy(blindtransfer, res.data, sizeof(blindtransfer));
 
     //    sqlSelectEq("IPphone", "pkey", extension, "dvrvmail,extalert,cluster");
-    snprintf(myQuery, sizeof(myQuery), "SELECT dvrvmail,extalert,cluster from ipphone WHERE id='%s' AND cluster='%s'", extension, myCluster);
+    snprintf(myQuery, sizeof(myQuery), "SELECT dvrvmail,extalert,cluster from ipphone WHERE pkey='%s' AND cluster='%s'", extension, myCluster);
     sqlQuery(myQuery);
 
     strlcpy(vmbox, rescols[0], sizeof(vmbox));
