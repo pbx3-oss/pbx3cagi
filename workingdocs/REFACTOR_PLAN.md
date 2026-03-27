@@ -3,14 +3,14 @@
 ## Agreed route forward
 
 1. **Ship the cleanup first.** The changes already made (compile fixes, braces, typos, strlcpy, semicolon, pkey→key, sign-compare casts, bsd_compat, header prototypes) are committed. Deploy that build, get it working in the target environment, and complete the required testing. Establish a **stable, known-good baseline**.
-2. **Refactor in phases; test after each phase.** Do not do one big refactor-and-test. Do e.g. Phase 1.2 (unify on sqlQuery), test; then Phase 1.3 (dead code), test; then next phase. Each phase is a small, testable step. If something breaks, the last phase is the suspect.
+2. **Refactor in phases; test after each phase.** Do not do one big refactor-and-test. Do e.g. Phase 1.2 (SQLite clarity), test; then Phase 1.3 (dead code), test; then next phase. Each phase is a small, testable step. If something breaks, the last phase is the suspect.
 3. **Fallback.** Always have a recent known-good state (tag or branch) to revert to.
 
 ---
 
 ## Current State
 
-- **pbx3cagi.c**: ~3,325 lines, single translation unit.
+- **pbx3cagi.c**: ~3,210 lines, single translation unit.
 - **~35 global variables** (call state, cluster, channel, DB result buffer, AGI args, debug).
 - **~45 functions**: one big `main()` with a 30+ case switch, then command handlers and shared helpers.
 - **Tight coupling**: every command handler reads/writes globals (`agi`, `res`, `myCluster`, `rescols[]`, `callerid`, etc.) and calls shared DB/AGI helpers.
@@ -18,9 +18,9 @@
 ### Data access: two separate systems
 
 - **Asterisk DB** (DBGet, DBPut, DBDel): Calls into *Asterisk’s* internal database via AGI (DATABASE GET/PUT/DEL). Used for runtime call state, agent login (e.g. DYNLOGIN, eAgent, dAgent), and similar. No SQLite; no pbx3 schema.
-- **SQLite** (DBQuery, sqlQuery): Opens the *pbx3* tenant/instance SQLite DB in-process (e.g. `/opt/pbx3/db/sqlite.rdonly.db`). Used for cluster, trunks, ipphone, agent table, ivrmenu, etc. Quite separate from Asterisk DB. Historically **sqlQuery succeeded DBQuery** in the old system; it makes sense to go forward with **only one call type (sqlQuery)**. All SQLite access should use sqlQuery; DBQuery should be phased out (call sites migrated to build the query string and call sqlQuery, then DBQuery removed).
+- **SQLite (pbx3 tenant DB):** Opens the *pbx3* read-only SQLite DB in-process (e.g. `/opt/pbx3/db/sqlite.rdonly.db`). **Runtime `SELECT`s** use **`sqlQueryBind1` / `sqlQueryBind2`** (internal `sqlQueryBindInternal`): SQL uses `?` placeholders; results land in global **`rescols[]`**. One **shared `sqlite3` connection** per AGI process (opened on first use, `atexit` closes on normal exit). The old string-interpolation helper path **`sqlQuery()` has been removed**; **`DBQuery` / `sqlSelectEq` are gone**. **Cluster row:** `load_cluster_cfg()` still uses **direct `sqlite3_*`** for the single `SELECT` that fills `g_cluster_cfg` (escaped literals for `pkey`/`shortuid`).
 
-Refactor steps should treat these as distinct: e.g. “SQLite module” = pbx3 data only; “Asterisk DB” stays as AGI wrappers. SQLite API = single entry point: sqlQuery.
+Refactor steps should treat these as distinct: “SQLite module” = pbx3 data only; “Asterisk DB” stays as AGI wrappers. Public SQLite read API today: **`sqlQueryBind1` / `sqlQueryBind2`** (+ `load_cluster_cfg` for tenant config).
 
 ### Main structural elements
 
@@ -41,7 +41,7 @@ Refactor steps should treat these as distinct: e.g. “SQLite module” = pbx3 d
 | CheckState, CheckTime, routeClass | 2427–2666 | Time/state, route class |
 | IVR / IVRAction      | 2668–2888   | IVR menus |
 | **Asterisk DB** (DBGet, DBPut, DBDel) | 2890–2912 | Asterisk internal DB via AGI (DATABASE GET/PUT/DEL) – call state, agent login, etc. |
-| **SQLite** (DBQuery, sqlQuery) | 2915–3110 | pbx3 tenant/instance data; sqlQuery is the successor to DBQuery – unify on sqlQuery only |
+| **SQLite** (`sqlQueryBind1`/`2`, `load_cluster_cfg`) | (grep `sqlQueryBind` / `load_cluster_cfg` in .c) | pbx3 tenant data; bound reads + one direct cluster load |
 | OutQmt, QLogWrite, outboundClip, consoleMsg | 3133–3325 | Queue log, clip, logging |
 
 ---
@@ -50,8 +50,8 @@ Refactor steps should treat these as distinct: e.g. “SQLite module” = pbx3 d
 
 1. **Globals**: Hard to reason about data flow; any function can touch call state; testing is difficult.
 2. **Single file**: Hard to navigate; merge conflicts; long compile times.
-3. **Two different “DB” mechanisms**: (a) **Asterisk DB** – DBGet/DBPut/DBDel call Asterisk’s internal database via AGI (DATABASE GET/PUT/DEL); used for runtime call state, agent login, DYNLOGIN, etc. (b) **SQLite** – DBQuery/sqlQuery open the pbx3 tenant/instance SQLite DB in-process for cluster, trunks, ipphone, and other config. They are quite separate; the refactor plan should treat them as distinct.
-4. **Duplicate patterns**: DBQuery and sqlQuery share almost identical execution logic (open, prepare with retry, step, fill rescols). Unifying on sqlQuery only removes duplication and one code path.
+3. **Two different “DB” mechanisms**: (a) **Asterisk DB** – DBGet/DBPut/DBDel call Asterisk’s internal database via AGI (DATABASE GET/PUT/DEL); used for runtime call state, agent login, DYNLOGIN, etc. (b) **SQLite** – pbx3 tenant DB via shared handle + **`sqlQueryBind1`/`sqlQueryBind2`** and **`load_cluster_cfg`**. They are quite separate; treat them as distinct.
+4. **Historical duplicate SQLite paths**: Addressed — single bind-based executor for runtime reads; `sqlQuery` / `DBQuery` / `sqlSelectEq` removed.
 5. **Dead/optional code**: Commented cases (OutCos, OutCluster, Alias, hangUp, SetTimer 33–35), PlayGreet in a block comment; cfTab “get rid” note.
 6. **Switch in main**: Adding a command means editing main() and a large file.
 
@@ -77,9 +77,9 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 **1.2 Clarify and deduplicate the two data-access layers**
 
 - **Asterisk DB** (DBGet, DBPut, DBDel): these are thin wrappers around AGITool_database_get/put/del – they talk to *Asterisk’s* internal database (realtime/AstDB), not SQLite. Keep them grouped together; optionally add a comment block “Asterisk DB (via AGI) – runtime state, agent login, etc.”
-- **SQLite – unify on sqlQuery only**: sqlQuery succeeded DBQuery in the old system; go forward with a single call type. (1) Migrate every `DBQuery(table, wherecol, whereval, column)` call site to build the SELECT query string (e.g. `snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM %s WHERE %s='%s'", ...)`) and call `sqlQuery(myQuery)`; result still in `rescols[]`. (2) Remove `DBQuery()`. (3) Keep one contiguous “pbx3 SQLite” block containing only `sqlQuery` (and optionally one internal `static` helper for open/prepare/step/fill/close if you want to tidy the function).
-- Add a short comment at the top of each block: “Asterisk DB: …” vs “pbx3 SQLite: sqlQuery only”. Do not conflate the two when extracting modules later.
-- Outcome: two clear boundaries (Asterisk DB vs SQLite); one SQLite entry point (sqlQuery); no duplicate execution logic; easier to extract SQLite to its own module later.
+- **SQLite – done (this cycle):** Runtime reads use **`sqlQueryBind1` / `sqlQueryBind2`** with `?` binds; shared connection; **`sqlQuery` removed**. Dynamic **column names** (e.g. `queue1`…`queue6`, ivrmenu `optionN`/`alertN`) still use `snprintf(myQuery, …, "SELECT %s FROM … WHERE pkey=?", col)` + **`sqlQueryBind1(myQuery, key)`** — identifiers are not bindable; values are.
+- When extracting a module: group “Asterisk DB: …” vs “pbx3 SQLite: bind helpers + `load_cluster_cfg`”.
+- Outcome today: one bound-read path for tenant data + explicit cluster load; easier to move into `agi_sqlite.c` later.
 
 **1.3 Remove or isolate dead code**
 
@@ -99,13 +99,12 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 - Move the table and handler declarations to a new file, e.g. `agi_commands.c` / `agi_commands.h`, with handlers still implemented in pbx3cagi.c (or move one handler at a time later).
 - Outcome: adding a command = adding a row and implementing a function; main() stays small.
 
-**2.2 Extract SQLite module (pbx3 data only) – sqlQuery only**
+**2.2 Extract SQLite module (pbx3 data only)**
 
 - New files: e.g. `agi_sqlite.c`, `agi_sqlite.h` (or `pbx3_db.c`), to make clear this is *pbx3* data, not Asterisk DB.
-- Move **sqlQuery** (and its execution logic) into this module. Expose a single API, e.g. `sqlQuery(char *query)` or `agi_sqlite_query(char *query)`, with results in a `rescols`-like interface (or a struct passed in). There is no DBQuery in the new module – callers build the query string and call sqlQuery (Phase 1.2 will have already migrated away from DBQuery).
-- **Do not** move DBGet/DBPut/DBDel into this module – they are Asterisk DB (AGI DATABASE GET/PUT/DEL), not SQLite. Keep them in pbx3cagi.c (or later in a small “asterisk_db” wrapper that takes agi/res and calls AGITool_database_*).
-- pbx3cagi.c then uses the new SQLite module (single call type: sqlQuery) for cluster/trunks/ipphone etc., and continues to call DBGet/DBPut/DBDel for Asterisk state.
-- Outcome: pbx3 SQLite access lives in one place with one call type (sqlQuery); Asterisk DB remains AGI-side and separate.
+- Move **`sqlQueryBindInternal` / `sqlQueryBind1` / `sqlQueryBind2`**, **`sqlGetSharedHandle`**, and optionally **`load_cluster_cfg`** into this module. Expose APIs with results in `rescols[]` (or a struct passed in).
+- **Do not** move DBGet/DBPut/DBDel into this module – they are Asterisk DB (AGI DATABASE GET/PUT/DEL), not SQLite.
+- Outcome: pbx3 SQLite access in one place; Asterisk DB remains AGI-side.
 
 **2.3 Extract “call context” initialisation**
 
@@ -146,7 +145,7 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 ## Suggested Order of Work
 
 0. **Before refactor:** Deploy current cleanup build; run integration and manual tests; fix any issues; tag a stable baseline.
-1. **Phase 1.2** (unify SQLite on sqlQuery: migrate DBQuery call sites → sqlQuery, remove DBQuery) – low risk, one call type, immediate clarity. Test after.
+1. **Phase 1.2** (SQLite) – **largely complete:** bound reads (`sqlQueryBind1`/`2`), shared handle, removed `sqlQuery`/`DBQuery`/`sqlSelectEq`. Remaining: optional `load_cluster_cfg` merge into same module / bind style for the OR predicate.
 2. **Phase 1.3** (dead code) – quick cleanup. Test after.
 3. **Phase 1.1** (struct for call context) – one global at a time.
 4. **Phase 2.1** (command table) – then you can add commands without touching the big switch.
@@ -186,14 +185,16 @@ This keeps the same process, same binary name, and same external behaviour while
 ## For the next chat (handoff)
 
 **What’s done**
-- **Cleanup (committed in pbx3cagi repo):** Build fixes (ctype.h, brace/typo/syntax, path\[last\], strlcpy, semicolon, OutVoip(key), sign-compare casts), bsd_compat strlcpy/strlcat fallback, pbx3cagi.h prototype updates. Build is clean (zero warnings).
-- **Refactor plan:** This document (REFACTOR_PLAN.md) with phased plan, Asterisk DB vs SQLite clarified, “unify on sqlQuery only” and “agreed route forward” (ship cleanup → test → refactor in phases with test after each).
+- **Cleanup + SQLite refactor (pbx3cagi repo):** Build fixes, bsd_compat, `g_cluster_cfg` / `load_cluster_cfg`, redundant cluster re-queries removed, shared SQLite handle, **`sqlQueryBind1` / `sqlQueryBind2`** for all runtime reads, **`sqlQuery` removed**, `sqlSelectEq` removed (inline SQL), **`CheckState` `rescols` index fix**, compiled binary **gitignored**. Calls/SQL verified on target.
+- **Refactor plan:** This document — Asterisk DB vs pbx3 SQLite; Phase 1.2 SQLite path effectively done.
 
 **What’s next**
-1. **Before any refactor:** Deploy the current pbx3cagi binary, run integration/staging and manual tests, fix any environment issues. Get to a stable baseline and (if possible) tag it.
-2. **First refactor phase when ready:** Phase 1.2 – unify SQLite on sqlQuery (migrate all DBQuery call sites to build query + sqlQuery(myQuery), remove DBQuery). Then test again.
+1. **Packaging:** Deferred TODO above — `debian/rules` must build `pbx3cagi` on Linux arm64 (or target arch).
+2. **Schema side project:** `pbx3/workingdocs/SQL_CHECK_CONSTRAINT_SIDEPROJECT.md` — then simplify `load_cluster_cfg` NULL branching if desired.
+3. **Phase 1.3** (dead code) / **1.1** (structs) / **2.x** (command table, extract `agi_sqlite.c`) when ready.
 
 **Where things live**
 - Plan: `pbx3cagi/workingdocs/REFACTOR_PLAN.md`
-- Source: `pbx3cagi-1.0.0/csource/pbx3cagi.c` (~3325 lines), `pbx3cagi.h`, `cagi.c`, `cagi.h`, `bsd_compat.h`
-- DBQuery call sites: ~45 uses of `DBQuery(...)` in pbx3cagi.c; grep for `DBQuery(` to find them. sqlQuery takes a pre-built query string; results still in `rescols[]`.
+- Handoff snapshot: `pbx3cagi/workingdocs/NEXT_AGENT_PBX3CAGI.md`
+- Source: `pbx3cagi-1.0.0/csource/pbx3cagi.c` (~3210 lines), `pbx3cagi.h`, `cagi.c`, `cagi.h`, `bsd_compat.h`
+- Grep: `sqlQueryBind`, `load_cluster_cfg`, `sqlGetSharedHandle` — results in `rescols[]`.
