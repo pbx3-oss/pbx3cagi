@@ -177,6 +177,12 @@ This keeps the same process, same binary name, and same external behaviour while
 
 ---
 
+## Deferred TODO (pbx3cagi)
+
+1. **Debian / dpkg packaging** — The compiled binary `pbx3cagi-1.0.0/csource/pbx3cagi` is **gitignored** (no longer committed). Package builds must run `make` in `pbx3cagi-1.0.0/csource` on the target platform (e.g. **Linux arm64**) and install the built artifact. Review and update `debian/rules` (or whatever copies the AGI into the package) so it does not rely on a pre-checked-in binary.
+
+---
+
 ## For the next chat (handoff)
 
 **What’s done**
