@@ -146,7 +146,6 @@ char* GetDBProp(char* key, char* prop);
 char* GetKeys(char* type);
 void DialBack();
 char* DBQueryKeys(char* table);
-char* sqlQuery(char* myQuery);
 void sig_handler(int signum);
 //void OutQmt(char* number, char* channel, char* queue, char* agent);
 void OutQmt();
