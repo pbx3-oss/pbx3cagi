@@ -1229,7 +1229,7 @@ void OutRoute()
      */
     if (caller_is_local)
     {
-        snprintf(myQuery, sizeof(myQuery), "SELECT abstimeout from ipphone WHERE pkey='%s' AND cluster='%s'", extension, myCluster);
+        snprintf(myQuery, sizeof(myQuery), "SELECT abstimeout from ipphone WHERE shortuid='%s' AND cluster='%s'", extension, myCluster);
         sqlQuery(myQuery);
         strlcpy(extenAbstimeout, rescols[0], sizeof(extenAbstimeout));
         if (strcmp(extenAbstimeout, ""))
@@ -1559,7 +1559,7 @@ void LepDial()
     strlcpy(blindtransfer, res.data, sizeof(blindtransfer));
 
     //    sqlSelectEq("IPphone", "pkey", extension, "dvrvmail,extalert,cluster");
-    snprintf(myQuery, sizeof(myQuery), "SELECT dvrvmail,extalert,cluster from ipphone WHERE pkey='%s' AND cluster='%s'", extension, myCluster);
+    snprintf(myQuery, sizeof(myQuery), "SELECT dvrvmail,extalert,cluster from ipphone WHERE shortuid='%s' AND cluster='%s'", extension, myCluster);
     sqlQuery(myQuery);
 
     strlcpy(vmbox, rescols[0], sizeof(vmbox));
