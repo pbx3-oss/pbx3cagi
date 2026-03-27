@@ -117,6 +117,9 @@ void DebugFunctionMsg(const char *thisFunc, const char *thisMsg)
 }
 
 cluster_cfg_t g_cluster_cfg;
+/* Prepared SELECT helpers: sql must contain exactly one ? (bind1) or two ? in order (bind2). */
+static char *sqlQueryBind1(const char *sql, const char *arg1);
+static char *sqlQueryBind2(const char *sql, const char *arg1, const char *arg2);
 
 static void cluster_cfg_apply_defaults(cluster_cfg_t *cfg)
 {
@@ -1235,8 +1238,7 @@ void OutRoute()
      */
     if (caller_is_local)
     {
-        snprintf(myQuery, sizeof(myQuery), "SELECT abstimeout from ipphone WHERE shortuid='%s' AND cluster='%s'", extension, myCluster);
-        sqlQuery(myQuery);
+        sqlQueryBind2("SELECT abstimeout FROM ipphone WHERE shortuid=? AND cluster=?", extension, myCluster);
         strlcpy(extenAbstimeout, rescols[0], sizeof(extenAbstimeout));
         if (strcmp(extenAbstimeout, ""))
         {
@@ -1568,11 +1570,10 @@ void LepDial()
     AGITool_get_variable(&agi, &res, "BLINDTRANSFER");  //set in extensions.conf
     strlcpy(blindtransfer, res.data, sizeof(blindtransfer));
 
-    snprintf(myQuery, sizeof(myQuery), "SELECT dvrvmail,extalert,cluster from ipphone WHERE shortuid='%s' AND cluster='%s'", extension, myCluster);
-    sqlQuery(myQuery);
+    sqlQueryBind2("SELECT dvrvmail,extalert,cluster FROM ipphone WHERE shortuid=? AND cluster=?", extension, myCluster);
 
     strlcpy(vmbox, rescols[0], sizeof(vmbox));
-    strlcpy(extalert, rescols[1], sizeof(extalert));S
+    strlcpy(extalert, rescols[1], sizeof(extalert));
     strlcpy(calledCluster, rescols[2], sizeof(calledCluster));
 
     if (strcmp(vmbox, "None"))
@@ -1962,8 +1963,7 @@ char *SetRecord(char *key, char *compass)
 /**
  *  Check phone recording setting
  */
-        snprintf(myQuery, sizeof(myQuery), "SELECT devicerec from ipphone WHERE shortuid='%s'", key);
-        sqlQuery(myQuery);
+        sqlQueryBind1("SELECT devicerec FROM ipphone WHERE shortuid=?", key);
         strlcpy(devicerec, rescols[0], sizeof(devicerec));
     } 
     else
@@ -2971,6 +2971,110 @@ char *sqlQuery(char *query)
 
     sqlite3_finalize(stmt);
     return pVal;
+}
+
+static char *sqlQueryBindInternal(const char *sql, const char *arg1, const char *arg2, int bind_count)
+{
+    char *pVal = &rescols[0][0];
+    int retval, i;
+
+    DebugFunctionTrace(__FUNCTION__);
+
+    sqlite3 *handle = sqlGetSharedHandle();
+    if (handle == NULL)
+    {
+        return "-1";
+    }
+
+    if (debug)
+    {
+        snprintf(vmsg, sizeof(vmsg), "Executing prepared SQL %s", sql);
+        DebugFunctionMsg(__FUNCTION__, vmsg);
+    }
+
+    sqlite3_stmt *stmt = NULL;
+    for (i = 0; i < 3; i++)
+    {
+        retval = sqlite3_prepare_v2(handle, sql, -1, &stmt, 0);
+        if (retval == SQLITE_OK)
+        {
+            break;
+        }
+        if (retval == SQLITE_LOCKED || retval == SQLITE_BUSY)
+        {
+            DebugFunctionMsg(__FUNCTION__, "Database LOCK! retry in .5s");
+            AGITool_exec(&agi, &res, "Wait", "0.5");
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    if (retval != SQLITE_OK)
+    {
+        snprintf(vmsg, sizeof(vmsg), "Prepared SQL failed, retval=%i, sql=%s", retval, sql);
+        DebugFunctionMsg(__FUNCTION__, vmsg);
+        return pVal;
+    }
+
+    if (bind_count >= 1)
+    {
+        retval = sqlite3_bind_text(stmt, 1, arg1 ? arg1 : "", -1, SQLITE_TRANSIENT);
+        if (retval != SQLITE_OK)
+        {
+            snprintf(vmsg, sizeof(vmsg), "Bind #1 failed, retval=%i, sql=%s", retval, sql);
+            DebugFunctionMsg(__FUNCTION__, vmsg);
+            sqlite3_finalize(stmt);
+            return pVal;
+        }
+    }
+    if (bind_count >= 2)
+    {
+        retval = sqlite3_bind_text(stmt, 2, arg2 ? arg2 : "", -1, SQLITE_TRANSIENT);
+        if (retval != SQLITE_OK)
+        {
+            snprintf(vmsg, sizeof(vmsg), "Bind #2 failed, retval=%i, sql=%s", retval, sql);
+            DebugFunctionMsg(__FUNCTION__, vmsg);
+            sqlite3_finalize(stmt);
+            return pVal;
+        }
+    }
+
+    retval = sqlite3_step(stmt);
+
+    if (debug)
+    {
+        snprintf(vmsg, sizeof(vmsg), "Prepared SQL returned %i columns", sqlite3_column_count(stmt));
+        DebugFunctionMsg(__FUNCTION__, vmsg);
+    }
+
+    if (sqlite3_column_count(stmt) > 0)
+    {
+        for (i = 0; i < sqlite3_column_count(stmt); i++)
+        {
+            const unsigned char *t = sqlite3_column_text(stmt, i);
+            strlcpy(rescols[i], t ? (const char *)t : "", sizeof(rescols[i]));
+            if (debug)
+            {
+                snprintf(vmsg, sizeof(vmsg), "Prepared col[%i] value='%s'", i, rescols[i]);
+                DebugFunctionMsg(__FUNCTION__, vmsg);
+            }
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    return pVal;
+}
+
+static char *sqlQueryBind1(const char *sql, const char *arg1)
+{
+    return sqlQueryBindInternal(sql, arg1, NULL, 1);
+}
+
+static char *sqlQueryBind2(const char *sql, const char *arg1, const char *arg2)
+{
+    return sqlQueryBindInternal(sql, arg1, arg2, 2);
 }
 
 /***********************************************************************
