@@ -473,11 +473,20 @@ int main(int argc, char **argv)
 
     AGITool_exec(&agi, &res, "Set", setcdrcmd);
 
-    snprintf(vmsg, sizeof(vmsg),
-             "Phase Main cluster %s (context %s) PARM_CMD %s PARM_CLST %s",
-             myCluster, context,
-             (argc > 1 && myargv[1] != NULL) ? PARM_CMD : "",
-             (argc > 3 && myargv[3] != NULL) ? PARM_CLST : "");
+    /* Before argc==1 / argc<2 exits: only read argv slots that exist. */
+    {
+        const char *log_cmd = "";
+        const char *log_clst = "";
+        if (argc > 1 && myargv[1] != NULL) {
+            log_cmd = PARM_CMD;
+        }
+        if (argc > 3 && myargv[3] != NULL) {
+            log_clst = PARM_CLST;
+        }
+        snprintf(vmsg, sizeof(vmsg),
+                 "Phase Main effective_cluster=%s agi_context=%s argv PARM_CMD=%s PARM_CLST=%s",
+                 myCluster, context, log_cmd, log_clst);
+    }
     DebugFunctionMsg(__FUNCTION__, vmsg);
 
     load_cluster_cfg(myCluster, &g_cluster_cfg);
