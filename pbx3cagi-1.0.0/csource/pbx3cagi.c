@@ -457,14 +457,13 @@ int main(int argc, char **argv)
 		rdnis_is_set = TRUE;
 	}
 
-    strlcpy(myClusterContext, context, sizeof(myClusterContext));
-
     if (argc > 3 && myargv[3] != NULL && PARM_CLST[0] != '\0') {
         strlcpy(myCluster, PARM_CLST, sizeof(myCluster));
     } else {
         strlcpy(myCluster, context, sizeof(myCluster));
     }
 
+    strlcpy(myClusterContext, myCluster, sizeof(myClusterContext));
     if (!strcmp(myCluster, "default")) {
         strlcpy(myClusterContext, "qrxvtmny", sizeof(myClusterContext));
     }
@@ -2752,7 +2751,7 @@ void IVR(char *ivrname)
                 {
                     AGITool_set_priority(&agi, &res, 1);
                     AGITool_set_extension(&agi, &res, dtmf);
-                    AGITool_set_context(&agi, &res, "myClusterContext");
+                    AGITool_set_context(&agi, &res, myClusterContext);
                     return;
                 }
                 IVRAction(PARM_KEY, dtmf);
@@ -2851,7 +2850,7 @@ void IVRAction(char *menu, char *press)
     {
         AGITool_set_priority(&agi, &res, 1);
         AGITool_set_extension(&agi, &res, action);
-        AGITool_set_context(&agi, &res, "myClusterContext");
+        AGITool_set_context(&agi, &res, myClusterContext);
         return;
     }
     // bad key press?
