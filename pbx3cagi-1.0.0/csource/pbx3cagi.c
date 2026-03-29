@@ -459,8 +459,8 @@ int main(int argc, char **argv)
 
     strlcpy(myClusterContext, context, sizeof(myClusterContext));
 
-    if (argc > 3 && argv[3] != NULL && argv[3][0] != '\0') {
-        strlcpy(myCluster, argv[3], sizeof(myCluster));
+    if (argc > 3 && myargv[3] != NULL && PARM_CLST[0] != '\0') {
+        strlcpy(myCluster, PARM_CLST, sizeof(myCluster));
     } else {
         strlcpy(myCluster, context, sizeof(myCluster));
     }
@@ -474,10 +474,10 @@ int main(int argc, char **argv)
     AGITool_exec(&agi, &res, "Set", setcdrcmd);
 
     snprintf(vmsg, sizeof(vmsg),
-             "Phase Main cluster %s (context %s) argv1 %s PARM_CLST %s",
+             "Phase Main cluster %s (context %s) PARM_CMD %s PARM_CLST %s",
              myCluster, context,
-             (argc > 1 && argv[1] != NULL) ? argv[1] : "",
-             (argc > 3 && argv[3] != NULL) ? argv[3] : "");
+             (argc > 1 && myargv[1] != NULL) ? PARM_CMD : "",
+             (argc > 3 && myargv[3] != NULL) ? PARM_CLST : "");
     DebugFunctionMsg(__FUNCTION__, vmsg);
 
     load_cluster_cfg(myCluster, &g_cluster_cfg);
@@ -529,23 +529,23 @@ int main(int argc, char **argv)
         DebugFunctionMsg(__FUNCTION__, vmsg);
         snprintf(vmsg, sizeof(vmsg), "PARM_CMD is %s", PARM_CMD);
         DebugFunctionMsg(__FUNCTION__, vmsg);
-        if (argc > 2 && argv[2] != NULL) {
+        if (argc > 2 && myargv[2] != NULL) {
             snprintf(vmsg, sizeof(vmsg), "PARM_KEY is %s", PARM_KEY);
             DebugFunctionMsg(__FUNCTION__, vmsg);
         }
-        if (argc > 3 && argv[3] != NULL) {
+        if (argc > 3 && myargv[3] != NULL) {
             snprintf(vmsg, sizeof(vmsg), "PARM_CLST is %s", PARM_CLST);
             DebugFunctionMsg(__FUNCTION__, vmsg);
         }
-        if (argc > 4 && argv[4] != NULL) {
+        if (argc > 4 && myargv[4] != NULL) {
             snprintf(vmsg, sizeof(vmsg), "PARM_PM1 is %s", PARM_PM1);
             DebugFunctionMsg(__FUNCTION__, vmsg);
         }
-        if (argc > 5 && argv[5] != NULL) {
+        if (argc > 5 && myargv[5] != NULL) {
             snprintf(vmsg, sizeof(vmsg), "PARM_PM2 is %s", PARM_PM2);
             DebugFunctionMsg(__FUNCTION__, vmsg);
         }
-        if (argc > 6 && argv[6] != NULL) {
+        if (argc > 6 && myargv[6] != NULL) {
             snprintf(vmsg, sizeof(vmsg), "PARM_PM3 is %s", PARM_PM3);
             DebugFunctionMsg(__FUNCTION__, vmsg);
         }
