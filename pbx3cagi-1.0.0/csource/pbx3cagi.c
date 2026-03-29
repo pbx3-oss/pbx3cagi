@@ -457,22 +457,27 @@ int main(int argc, char **argv)
 		rdnis_is_set = TRUE;
 	}
 
-    // set the cluster and  from the agi_context 
-//ToDo - the default context is still an issue.  Needs to be resolved.
+    strlcpy(myClusterContext, context, sizeof(myClusterContext));
 
-    strlcpy (myCluster, context, sizeof(myCluster));
-    strlcpy (myClusterContext, context, sizeof(myClusterContext));
-    
-    if (!strcmp(myCluster,"default")) {
-      strlcpy (myClusterContext, "qrxvtmny", sizeof(myClusterContext));
+    if (argc > 3 && argv[3] != NULL && argv[3][0] != '\0') {
+        strlcpy(myCluster, argv[3], sizeof(myCluster));
+    } else {
+        strlcpy(myCluster, context, sizeof(myCluster));
     }
 
+    if (!strcmp(myCluster, "default")) {
+        strlcpy(myClusterContext, "qrxvtmny", sizeof(myClusterContext));
+    }
 
-    strlcat(setcdrcmd, context, sizeof(setcdrcmd));
+    strlcat(setcdrcmd, myCluster, sizeof(setcdrcmd));
 
     AGITool_exec(&agi, &res, "Set", setcdrcmd);
 
-    snprintf(vmsg, sizeof(vmsg), "Phase Main Assigned a cluster of %s with PARM_CMD %s and PARM_PM3 %s", context, PARM_CMD, PARM_PM3);
+    snprintf(vmsg, sizeof(vmsg),
+             "Phase Main cluster %s (context %s) argv1 %s PARM_CLST %s",
+             myCluster, context,
+             (argc > 1 && argv[1] != NULL) ? argv[1] : "",
+             (argc > 3 && argv[3] != NULL) ? argv[3] : "");
     DebugFunctionMsg(__FUNCTION__, vmsg);
 
     load_cluster_cfg(myCluster, &g_cluster_cfg);
@@ -524,12 +529,26 @@ int main(int argc, char **argv)
         DebugFunctionMsg(__FUNCTION__, vmsg);
         snprintf(vmsg, sizeof(vmsg), "PARM_CMD is %s", PARM_CMD);
         DebugFunctionMsg(__FUNCTION__, vmsg);
-        snprintf(vmsg, sizeof(vmsg), "PARM_KEY is %s", PARM_KEY);
-        DebugFunctionMsg(__FUNCTION__, vmsg);
-        snprintf(vmsg, sizeof(vmsg), "PARM_PM1 is %s", PARM_PM1);
-        DebugFunctionMsg(__FUNCTION__, vmsg);
-        snprintf(vmsg, sizeof(vmsg), "PARM_PM2 is %s", PARM_PM2);
-        DebugFunctionMsg(__FUNCTION__, vmsg);
+        if (argc > 2 && argv[2] != NULL) {
+            snprintf(vmsg, sizeof(vmsg), "PARM_KEY is %s", PARM_KEY);
+            DebugFunctionMsg(__FUNCTION__, vmsg);
+        }
+        if (argc > 3 && argv[3] != NULL) {
+            snprintf(vmsg, sizeof(vmsg), "PARM_CLST is %s", PARM_CLST);
+            DebugFunctionMsg(__FUNCTION__, vmsg);
+        }
+        if (argc > 4 && argv[4] != NULL) {
+            snprintf(vmsg, sizeof(vmsg), "PARM_PM1 is %s", PARM_PM1);
+            DebugFunctionMsg(__FUNCTION__, vmsg);
+        }
+        if (argc > 5 && argv[5] != NULL) {
+            snprintf(vmsg, sizeof(vmsg), "PARM_PM2 is %s", PARM_PM2);
+            DebugFunctionMsg(__FUNCTION__, vmsg);
+        }
+        if (argc > 6 && argv[6] != NULL) {
+            snprintf(vmsg, sizeof(vmsg), "PARM_PM3 is %s", PARM_PM3);
+            DebugFunctionMsg(__FUNCTION__, vmsg);
+        }
         snprintf(vmsg, sizeof(vmsg), "Cluster is %s", myCluster);
         DebugFunctionMsg(__FUNCTION__, vmsg);
 //        snprintf(vmsg, sizeof(vmsg), "ClusterId is %s", myClusterId);
@@ -2966,15 +2985,16 @@ static char *sqlQueryBind2(const char *sql, const char *arg1, const char *arg2)
    replacement for the queuemetrics perl AGI. It opens and writes directly to the
    Asterisk queue log.
 
-   The code accepts 4 parameters and it is called from a custom app like this
+   Expects CMD, KEY, PARM_CLST (cluster shortuid), PM1, PM2, PM3 after the script name.
 
    Ast 1.6/1.8+ - probabaly won't work with Ast 1.4
 
 EXAMPLE CALL
-    exten => _X.,1,AGI(pbx3cagi,OutQmt,number,,Qname,agent)
+    exten => _X.,1,AGI(pbx3cagi,OutQmt,number,<cluster>,,Qname,agent)
 
 PARAMS
           PARM_KEY 	number -> number to Dial
+          PARM_CLST	cluster shortuid (tenant)
           PARM_PM1	Trunk -> Trunk (given by the Line column in trunks),
             this param is no longer used but must still be present in the parameter list
             (so that we don't break older calls).

@@ -36,9 +36,10 @@
 #define PARM_NUM myargc
 #define PARM_CMD *(myargv+1)
 #define PARM_KEY *(myargv+2)
-#define PARM_PM1 *(myargv+3)
-#define PARM_PM2 *(myargv+4)
-#define PARM_PM3 *(myargv+5)
+#define PARM_CLST *(myargv+3)
+#define PARM_PM1 *(myargv+4)
+#define PARM_PM2 *(myargv+5)
+#define PARM_PM3 *(myargv+6)
 #define SQLITEDB "/opt/pbx3/db/sqlite.rdonly.db"
 #define SOUNDIR "/usr/share/asterisk/extra-sounds/"
 #define QLOG "/var/log/asterisk/queue_log" 
