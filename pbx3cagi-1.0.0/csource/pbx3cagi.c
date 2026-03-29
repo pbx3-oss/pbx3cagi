@@ -2430,7 +2430,6 @@ void Ingress()
     char prefix[32] = {'\0'};
     char moh[16] = {'\0'};
     char alertinfo[128] = {'\0'};
-    char transformclip[MAX_TRANSFORM_LEN] = {'\0'};
     char clicluster[MAX_CLUSTER_LEN] = {'\0'};
     char setcdrcmduser[64] = "CDR(userfield)=";
 
@@ -2461,14 +2460,13 @@ void Ingress()
         AGITool_exec(&agi, &res, "Set", df_ingress);
     }
 
-    sqlQueryBind1("SELECT technology,tag,inprefix,alertinfo,transformclip,moh,swoclip FROM inroutes WHERE pkey=?", PARM_KEY);
+    sqlQueryBind1("SELECT technology,tag,inprefix,alertinfo,moh,swoclip FROM inroutes WHERE pkey=?", PARM_KEY);
     strlcpy(technology, rescols[0], sizeof(technology));
     strlcpy(tag, rescols[1], sizeof(tag));
     strlcpy(prefix, rescols[2], sizeof(prefix));
     strlcpy(alertinfo, rescols[3], sizeof(alertinfo));
-    strlcpy(transformclip, rescols[4], sizeof(transformclip));
-    strlcpy(moh, rescols[5], sizeof(moh));
-    strlcpy(swoclip, rescols[6], sizeof(swoclip));
+    strlcpy(moh, rescols[4], sizeof(moh));
+    strlcpy(swoclip, rescols[5], sizeof(swoclip));
 
     AGITool_set_variable(&agi, &res, "__MOH", moh);
 
