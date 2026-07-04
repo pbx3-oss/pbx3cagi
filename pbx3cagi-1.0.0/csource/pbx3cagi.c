@@ -152,6 +152,16 @@ static void cluster_cfg_apply_defaults(cluster_cfg_t *cfg)
 
 static sqlite3 *g_sqlite_handle = NULL;
 
+static const char *sqlitedb_path(void)
+{
+    const char *env = getenv("PBX3CAGI_SQLITE_DB");
+    if (env != NULL && env[0] != '\0')
+    {
+        return env;
+    }
+    return SQLITEDB;
+}
+
 static void sqlCloseSharedHandle(void)
 {
     if (g_sqlite_handle != NULL)
@@ -170,7 +180,7 @@ static sqlite3 *sqlGetSharedHandle(void)
         return g_sqlite_handle;
     }
 
-    retval = sqlite3_open(SQLITEDB, &g_sqlite_handle);
+    retval = sqlite3_open(sqlitedb_path(), &g_sqlite_handle);
     if (retval)
     {
         if (g_sqlite_handle != NULL)

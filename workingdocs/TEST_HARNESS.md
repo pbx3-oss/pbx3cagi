@@ -89,6 +89,8 @@ agi_language: en
 
 ```
 
+**Important:** include a **blank line** after the last variable line. `AGITool_Init` reads until a line that is exactly `\n`; without it, `pbx3cagi` blocks on stdin (harness deadlock).
+
 ### `argv.txt`
 
 Whitespace-separated args **after** program name (same as dialplan AGI args):

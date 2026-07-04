@@ -15,6 +15,10 @@ pbx3cagi-1.0.0/debian/files
 # Pre-built binaries per arch (regenerate on Linux builder)
 pbx3cagi-1.0.0/images/
 
+# Phase 0 test fixtures (copy locally via tests/fixtures/setup-tenant-db.sh)
+pbx3cagi-1.0.0/tests/fixtures/tenant/*.db
+pbx3cagi-1.0.0/tests/fixtures/astdb/*.sqlite3
+
 # Build artifacts
 *.a
 *.so

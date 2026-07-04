@@ -38,4 +38,8 @@ cagi.c: cagi.h
 clean:
 	rm -rf *o pbx3cagi
 
+test:
+	$(MAKE) all
+	../tests/run-all-scenarios.sh
+
 
