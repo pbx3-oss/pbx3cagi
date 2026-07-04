@@ -2166,8 +2166,9 @@ char *CFCheck(char *type, char *number)
         }
 /**
  *  Is this a local divert or are we heading out to the PSTN?
+ *  Use forward target (cfnum), not AstDB key (number — shortuid or pkey).
  */
-        if (strlen(number) > 5)
+        if (strlen(cfnum) > 5)
 /**
  *      Our forward is not local.  The default behaviour is to play a comfort message at this point
  *      to cover the uncertainty of a possible audio pause while the upstream is switching

@@ -1,3 +1,8 @@
+pbx3cagi (1.0.0-2) UNRELEASED; urgency=low
+
+  * CFCheck: use forward target length for local vs external comfort tone
+    (was strlen on AstDB key shortuid, so every CFIM played hold clip).
+
 pbx3cagi (1.0.0-1) UNRELEASED; urgency=low
 
   * Initial package for pbx3 AGI engine
