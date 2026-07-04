@@ -3,8 +3,9 @@
 ## Agreed route forward
 
 1. **Ship the cleanup first.** The changes already made (compile fixes, braces, typos, strlcpy, semicolon, pkey→key, sign-compare casts, bsd_compat, header prototypes) are committed. Deploy that build, get it working in the target environment, and complete the required testing. Establish a **stable, known-good baseline**.
-2. **Refactor in phases; test after each phase.** Do not do one big refactor-and-test. Do e.g. Phase 1.2 (SQLite clarity), test; then Phase 1.3 (dead code), test; then next phase. Each phase is a small, testable step. If something breaks, the last phase is the suspect.
-3. **Fallback.** Always have a recent known-good state (tag or branch) to revert to.
+2. **Phase 0 (required): AGI test harness.** Before structural refactor (Phase 1.1+), implement offline scenario tests — fixture tenant SQLite, AstDB mock on the AGI protocol, transcript assertions. See **`TEST_HARNESS.md`**. One `pbx3cagi` process per scenario (same as production); no FastAGI multiplexer, no reentrancy change.
+3. **Refactor in phases; test after each phase.** Run the Phase 0 scenario suite after each refactor step. Do e.g. Phase 1.3 (dead code), test; then Phase 1.1 (structs), test; then next phase.
+4. **Fallback.** Always have a recent known-good state (tag or branch) to revert to.
 
 ---
 
@@ -17,7 +18,7 @@
 
 ### Data access: two separate systems
 
-- **Asterisk DB** (DBGet, DBPut, DBDel): Calls into *Asterisk’s* internal database via AGI (DATABASE GET/PUT/DEL). Used for runtime call state, agent login (e.g. DYNLOGIN, eAgent, dAgent), and similar. No SQLite; no pbx3 schema.
+- **Asterisk DB** (DBGet, DBPut, DBDel): Calls into *Asterisk’s* internal database via AGI (DATABASE GET/PUT/DEL). Used for runtime call state, agent login (e.g. DYNLOGIN, eAgent, dAgent), and similar. On the Asterisk side AstDB is persisted (SQLite in modern builds); **`pbx3cagi` only sees it through AGI**, not by opening `astdb.sqlite3` directly. Not the pbx3 tenant schema.
 - **SQLite (pbx3 tenant DB):** Opens the *pbx3* read-only SQLite DB in-process (e.g. `/opt/pbx3/db/sqlite.rdonly.db`). **Runtime `SELECT`s** use **`sqlQueryBind1` / `sqlQueryBind2`** (internal `sqlQueryBindInternal`): SQL uses `?` placeholders; results land in global **`rescols[]`**. One **shared `sqlite3` connection** per AGI process (opened on first use, `atexit` closes on normal exit). The old string-interpolation helper path **`sqlQuery()` has been removed**; **`DBQuery` / `sqlSelectEq` are gone**. **Cluster row:** `load_cluster_cfg()` still uses **direct `sqlite3_*`** for the single `SELECT` that fills `g_cluster_cfg` (escaped literals for `pkey`/`shortuid`).
 
 Refactor steps should treat these as distinct: “SQLite module” = pbx3 data only; “Asterisk DB” stays as AGI wrappers. Public SQLite read API today: **`sqlQueryBind1` / `sqlQueryBind2`** (+ `load_cluster_cfg` for tenant config).
@@ -60,6 +61,26 @@ Refactor steps should treat these as distinct: “SQLite module” = pbx3 data o
 ## Refactor Strategy: Incremental, Low-Risk
 
 Goal: **simplify and modularise without big rewrites**. Prefer extraction and clear boundaries over a full rewrite.
+
+---
+
+### Phase 0: AGI test harness (**required**)
+
+**Requirement:** Do not start Phase 1.1 (struct globals) or Phase 2+ file splits until Phase 0 acceptance criteria are met.
+
+**Spec:** **`TEST_HARNESS.md`** (full detail).
+
+**Summary:**
+
+| Piece | Approach |
+|-------|----------|
+| **Invoke** | Pipe AGI env block to stdin; argv as dialplan; one process per scenario |
+| **Tenant data** | Fixture copy of `sqlite.rdonly.db` (golden export); env override for path |
+| **AstDB** | Responder answers `DATABASE GET` from fixture `astdb.sqlite3` or key map — no Asterisk |
+| **Channel** | Transcript assertions on stdout (`must` / `must-not`); benign `200` replies for `EXEC` |
+| **First regressions** | CFIM local (no hold clip), CFIM external (comfort tones), empty forward |
+
+**Outcome:** Repeatable offline tests for the class of bugs found in golden QA (e.g. CFCheck `strlen(cfnum)`). Refactor phases run the suite instead of relying on manual calls only.
 
 ---
 
@@ -144,14 +165,15 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 
 ## Suggested Order of Work
 
-0. **Before refactor:** Deploy current cleanup build; run integration and manual tests; fix any issues; tag a stable baseline.
-1. **Phase 1.2** (SQLite) – **largely complete:** bound reads (`sqlQueryBind1`/`2`), shared handle, removed `sqlQuery`/`DBQuery`/`sqlSelectEq`. Remaining: optional `load_cluster_cfg` merge into same module / bind style for the OR predicate.
-2. **Phase 1.3** (dead code) – quick cleanup. Test after.
-3. **Phase 1.1** (struct for call context) – one global at a time.
-4. **Phase 2.1** (command table) – then you can add commands without touching the big switch.
-5. **Phase 2.2** (DB module) – move SQLite behind agi_db.c.
-6. **Phase 2.3** (init_call_context).
-7. **Phase 3** when you’re ready to reduce globals and improve testability.
+0. **Baseline:** Deploy current cleanup build; golden manual QA; tag stable (**1.0.0-2** on `main`).
+1. **Phase 0 (required):** AGI test harness — **`TEST_HARNESS.md`** deliverables 0.1–0.8. **Gate:** no Phase 1.1+ until scenarios pass.
+2. **Phase 1.2** (SQLite) – **largely complete:** bound reads (`sqlQueryBind1`/`2`), shared handle, removed `sqlQuery`/`DBQuery`/`sqlSelectEq`. Remaining: optional `load_cluster_cfg` merge into same module / bind style for the OR predicate.
+3. **Phase 1.3** (dead code) – quick cleanup. Run Phase 0 suite after.
+4. **Phase 1.1** (struct for call context) – one global at a time. Run Phase 0 suite after each commit.
+5. **Phase 2.1** (command table) – then you can add commands without touching the big switch.
+6. **Phase 2.2** (DB module) – move SQLite behind `agi_sqlite.c`.
+7. **Phase 2.3** (init_call_context).
+8. **Phase 3** — pass context pointer; AGI abstraction aligns with harness mock layer.
 
 ---
 
@@ -160,7 +182,7 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 | Risk | Mitigation |
 |------|------------|
 | Behaviour change | One logical change per commit; keep build + manual test after each step. |
-| Regressions | Add a small “smoke” script that runs pbx3cagi with a few argv patterns and checks exit code (and maybe AGI output) if possible. |
+| Regressions | **Phase 0 required:** scenario harness (`TEST_HARNESS.md`) — transcript + exit code; run after each refactor step. Manual golden calls for integration only. |
 | Merge conflicts | Do Phase 1 and 2.1 first; smaller, focused files reduce conflict surface. |
 | Performance | Avoid extra copying when introducing structs; pass pointers. DB layer change should not add heavy abstraction. |
 
@@ -168,7 +190,8 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 
 ## Summary
 
-- **Short term**: Group globals into structs, tidy the DB block and remove duplication, remove or isolate dead code, introduce a command table.
+- **Immediate:** Phase 0 AGI test harness (required gate).
+- **Short term:** Group globals into structs, tidy the DB block and remove duplication, remove or isolate dead code, introduce a command table.
 - **Medium term**: Extract DB into `agi_db.c`, and call context init into a single function; keep one binary.
 - **Long term**: Pass a single context pointer into all handlers, then optionally split handlers by domain and introduce a small AGI abstraction.
 
@@ -189,12 +212,14 @@ This keeps the same process, same binary name, and same external behaviour while
 - **Refactor plan:** This document — Asterisk DB vs pbx3 SQLite; Phase 1.2 SQLite path effectively done.
 
 **What’s next**
-1. **Packaging:** Deferred TODO above — `debian/rules` must build `pbx3cagi` on Linux arm64 (or target arch).
-2. **Schema side project:** `pbx3/workingdocs/SQL_CHECK_CONSTRAINT_SIDEPROJECT.md` — then simplify `load_cluster_cfg` NULL branching if desired.
-3. **Phase 1.3** (dead code) / **1.1** (structs) / **2.x** (command table, extract `agi_sqlite.c`) when ready.
+1. **Phase 0 (required):** AGI test harness — **`TEST_HARNESS.md`**. Gate for Phase 1.1+ refactor.
+2. **Packaging:** Pre-built amd64/arm64 in deb install tree; `debian/rules` runs `make` on target arch.
+3. **Schema side project:** `pbx3/workingdocs/SQL_CHECK_CONSTRAINT_SIDEPROJECT.md` — then simplify `load_cluster_cfg` NULL branching if desired.
+4. **Phase 1.3** (dead code) / **1.1** (structs) / **2.x** after Phase 0 passes.
 
 **Where things live**
 - Plan: `pbx3cagi/workingdocs/REFACTOR_PLAN.md`
+- Harness spec: `pbx3cagi/workingdocs/TEST_HARNESS.md`
 - Handoff snapshot: `pbx3cagi/workingdocs/NEXT_AGENT_PBX3CAGI.md`
 - Source: `pbx3cagi-1.0.0/csource/pbx3cagi.c` (~3210 lines), `pbx3cagi.h`, `cagi.c`, `cagi.h`, `bsd_compat.h`
 - Grep: `sqlQueryBind`, `load_cluster_cfg`, `sqlGetSharedHandle` — results in `rescols[]`.

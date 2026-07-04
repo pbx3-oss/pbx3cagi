@@ -1,37 +1,21 @@
-# NEXT AGENT: pbx3cagi (dbstruct)
+# NEXT AGENT: pbx3cagi
 
 ## Current baseline
-- Branch: `dbstruct`
-- Status: `pbx3cagi` builds; SQL retrievals and calls verified on target (Linux arm64). Compiled binary is **gitignored** — build with `make` in `pbx3cagi-1.0.0/csource` on the target arch.
+- Branch: **`main`**
+- Package: **1.0.0-2** (CFCheck fix, amd64 + arm64 binaries in deb install tree)
+- Status: Golden **08jzwn** QA passed for CoS, CFIM, runtime/AstDB shortuid, GenAst, local CFIM divert audio.
 
-## What was done (high level)
-1. **`pbx3cagi` runtime streamlining**
-   - Removed redundant local copies from `g_cluster_cfg` in these call paths:
-     `OutVoip`, `OutRoute`, `OutTrunk`, `LepDial`, `CFCheck`, `Ingress`, `IVR`.
-   - Kept only the locals that are required for buffers assembled from multiple sources (e.g. `intRingDelay`, CLID overrides).
-2. **SQLite**
-   - **Single shared connection** for the AGI process (`sqlGetSharedHandle`, closed via `atexit` on normal exit).
-   - **Tenant reads:** `sqlQueryBind1` / `sqlQueryBind2` (internal `sqlQueryBindInternal`) — all runtime `SELECT`s use `?` placeholders; results in `rescols[]`. Legacy **`sqlQuery` removed** (no call sites).
-   - **`load_cluster_cfg`:** still uses direct `sqlite3_*` for the one cluster row (escaped `pkey`/`shortuid`); extra cluster fields loaded once into `g_cluster_cfg` (no duplicate cluster `SELECT`s on hot paths).
-   - **Inline SQL:** `sqlSelectEq` removed; explicit `SELECT` strings at call sites where helpful.
-   - **Fix:** `CheckState` — `inroutes` row uses `rescols[0..2]` for `cluster`, `openroute`, `closeroute` (was wrongly using `[3]`/`[4]`).
-3. **Docs alignment**
-   - `REFACTOR_PLAN.md` lives under `pbx3cagi/workingdocs/`.
-
-## New contract: canonical data for fast literal comparisons
-- `pbx3cagi` uses **literal sentinel strings** for states (e.g. `"enabled"`, `"YES"`, `"None"`).
-- SQLite `NULL` is **unknown** (tristate); bound-query path maps NULL text columns to empty string (`""`) in `rescols[]` (same idea as before).
-- Side project: ensure migrated/new DB is **constraint/canonicalization compliant** so comparisons never see unexpected absence.
-
-### Side project reference (outside this repo)
-- See: `pbx3/workingdocs/SQL_CHECK_CONSTRAINT_SIDEPROJECT.md`
+## What was done (recent)
+- **CFCheck:** `strlen(cfnum)` for local vs external comfort tone (was `strlen(number)` on shortuid key).
+- **Golden QA merged** to `main` (pbx3, pbx3api, pbx3cagi); `goldenQA` branch deleted.
+- **Refactor plan:** Phase 0 AGI test harness documented as **required gate** before Phase 1.1+.
 
 ## What to do next
-1. **Re-review pbx3cagi with the assumption of compliance**
-   - If the DB guarantees `NOT NULL` + allowed literals for sentinel columns, simplify `load_cluster_cfg()` NULL branching and other defensive logic.
-2. **Debian packaging** — see **Deferred TODO** in `REFACTOR_PLAN.md` (binary gitignored; `debian/rules` must run `make`).
-3. **Run a focused regression subset**
-   - CF external forward (`cfwd_progress`, `cfwd_answer`)
-   - route/trunk fail tone flags (`play_*`)
-   - IVR timing (`ivr_key_wait`, `ivr_digit_wait`)
-   - ingress ring + `lterm` + **CheckState / open–closed routing**
+1. **Phase 0 (required):** Implement AGI test harness per **`TEST_HARNESS.md`** — fixture tenant DB, AstDB protocol mock, transcript scenarios (CFIM local/external first). **Do not start Phase 1.1 struct refactor until Phase 0 passes.**
+2. **Phase 1.3** (dead code) after Phase 0.
+3. **Schema side project:** `pbx3/workingdocs/SQL_CHECK_CONSTRAINT_SIDEPROJECT.md` — simplify `load_cluster_cfg` NULL branching when DB is canonical.
+
+## Docs
+- **`REFACTOR_PLAN.md`** — phases and order of work
+- **`TEST_HARNESS.md`** — Phase 0 deliverables 0.1–0.8
+- Source: `pbx3cagi-1.0.0/csource/pbx3cagi.c`, `cagi.c`, `pbx3cagi.h`
