@@ -3,4 +3,4 @@ pbx3cagi (1.0.0-2) stable; urgency=medium
   * CFCheck: local vs external forward uses forward target length.
   * Rebuilt amd64 and arm64 binaries.
 
- -- Jeffrey Stokoe <admin@aelintra.com>  Sat, 04 Jul 2026 17:30:00 +0000
+ -- KoKo <admin@aelintra.com>  Sat, 04 Jul 2026 17:30:00 +0000
