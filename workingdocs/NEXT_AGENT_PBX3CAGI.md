@@ -3,7 +3,7 @@
 ## Current baseline
 - Branch: **`main`**
 - Package: **1.0.0-2** (CFCheck fix, amd64 + arm64 binaries in deb install tree)
-- Status: Golden **08jzwn** QA passed for CoS, CFIM, runtime/AstDB shortuid, GenAst, local CFIM divert audio.
+- Status: Golden **08jzwn** — live call QA + **Phase 0 `make test` signed off** (seed + live tenant DB).
 
 ## What was done (recent)
 - **Phase 0 harness:** Synthetic fixture, CFIM scenarios, `make test`, **`TEST_RECIPE.md`** — on **`main`**.
@@ -18,8 +18,8 @@
 3. **S7** — recordings S3 offload.
 
 ## What to do next (pbx3cagi repo)
-1. **Golden:** `make test` per **`TEST_RECIPE.md`** — sign off Phase 0.
-2. **When product allows:** Phase **1.3** (dead code) → **1.1** (structs) — run harness after each commit.
+1. **Product priority:** **S8** → **R1** → **S7** — see **`pbx3/workingdocs/TODO.md`**.
+2. **When product allows:** Phase **1.3** (dead code) → **1.1** (structs) — run **`make test`** after each commit.
 3. **Recording capture:** likely minimal cagi changes for R1; capture already via SetRecord.
 
 ## Docs
