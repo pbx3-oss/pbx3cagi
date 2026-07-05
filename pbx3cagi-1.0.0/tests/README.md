@@ -1,5 +1,7 @@
 # pbx3cagi Phase 0 — offline AGI tests
 
+**Runbook (golden/Linux):** **`../../workingdocs/TEST_RECIPE.md`**
+
 Run **`pbx3cagi`** without Asterisk: synthetic tenant SQLite (committed seed), mock AstDB on the AGI protocol, transcript assertions.
 
 ## Prerequisites

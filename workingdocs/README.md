@@ -7,6 +7,7 @@ This folder contains documentation for AI agents working on the pbx3agi codebase
 | File | Purpose |
 |------|---------|
 | **REFACTOR_PLAN.md** | Incremental refactor phases; **Phase 0 harness is required** before struct/file splits |
+| **TEST_RECIPE.md** | **Copy-paste runbook** — `make test` on Linux/golden (start here when you forget) |
 | **TEST_HARNESS.md** | **Phase 0 spec** — offline AGI scenarios, fixtures, acceptance criteria |
 | **CODE_ASSESSMENT.md** | Overall code review: strengths, issues, architecture observations, recommendations |
 | **REWRITE_ANALYSIS.md** | Pros/cons of rewriting, language recommendations, migration strategies |
@@ -17,12 +18,13 @@ This folder contains documentation for AI agents working on the pbx3agi codebase
 When starting work on pbx3agi:
 
 1. **Read REFACTOR_PLAN.md** — Phase 0 test harness is **required** before Phase 1.1+ refactor
-2. **Read TEST_HARNESS.md** — if implementing or running offline AGI scenarios
-3. **Read CODE_ASSESSMENT.md** - Understand current state, critical issues, architecture
-4. **Read INCREMENTAL_IMPROVEMENT_PLAN.md** - Step-by-step plan for improving the code
-5. **Read REWRITE_ANALYSIS.md** - If considering rewrite, see language options and migration strategies
-6. **Check git history** - See what's been changed recently
-7. **Review issues** - SQL injection and string safety are critical priorities
+2. **Read TEST_RECIPE.md** — run offline scenarios on golden/Linux (`make test`)
+3. **Read TEST_HARNESS.md** — if implementing or extending offline AGI scenarios
+4. **Read CODE_ASSESSMENT.md** - Understand current state, critical issues, architecture
+5. **Read INCREMENTAL_IMPROVEMENT_PLAN.md** - Step-by-step plan for improving the code
+6. **Read REWRITE_ANALYSIS.md** - If considering rewrite, see language options and migration strategies
+7. **Check git history** - See what's been changed recently
+8. **Review issues** - SQL injection and string safety are critical priorities
 
 ## Key Issues to Address
 

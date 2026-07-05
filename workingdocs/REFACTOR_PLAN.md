@@ -3,7 +3,7 @@
 ## Agreed route forward
 
 1. **Ship the cleanup first.** The changes already made (compile fixes, braces, typos, strlcpy, semicolon, pkey→key, sign-compare casts, bsd_compat, header prototypes) are committed. Deploy that build, get it working in the target environment, and complete the required testing. Establish a **stable, known-good baseline**.
-2. **Phase 0 (required): AGI test harness.** Before structural refactor (Phase 1.1+), implement offline scenario tests — fixture tenant SQLite, AstDB mock on the AGI protocol, transcript assertions. See **`TEST_HARNESS.md`**. One `pbx3cagi` process per scenario (same as production); no FastAGI multiplexer, no reentrancy change.
+2. **Phase 0 (required): AGI test harness.** Before structural refactor (Phase 1.1+), implement offline scenario tests — fixture tenant SQLite, AstDB mock on the AGI protocol, transcript assertions. See **`TEST_HARNESS.md`**; run on golden with **`TEST_RECIPE.md`**. One `pbx3cagi` process per scenario (same as production); no FastAGI multiplexer, no reentrancy change.
 3. **Refactor in phases; test after each phase.** Run the Phase 0 scenario suite after each refactor step. Do e.g. Phase 1.3 (dead code), test; then Phase 1.1 (structs), test; then next phase.
 4. **Fallback.** Always have a recent known-good state (tag or branch) to revert to.
 
@@ -68,7 +68,7 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 
 **Requirement:** Do not start Phase 1.1 (struct globals) or Phase 2+ file splits until Phase 0 acceptance criteria are met.
 
-**Spec:** **`TEST_HARNESS.md`** (full detail).
+**Spec:** **`TEST_HARNESS.md`** (full detail). **Run:** **`TEST_RECIPE.md`** (`make test` on golden/Linux).
 
 **Summary:**
 
