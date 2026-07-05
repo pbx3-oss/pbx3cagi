@@ -11,7 +11,7 @@ Production AstDB lives at /var/lib/asterisk/astdb.sqlite3 (SQLite on modern Aste
 Phase 0 does NOT open that file from pbx3cagi. The harness mock answers AGI
 DATABASE GET from each scenario's astdb.json (family/key → value), e.g.:
 
-  "cfim/59507r": "1102"
+  "cfim/testex01": "1102"
 
 To capture live keys from golden after setting runtime CFIM in the SPA:
 

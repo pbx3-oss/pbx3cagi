@@ -1,31 +1,39 @@
 #!/usr/bin/env bash
-# Copy tenant SQLite fixture from golden export (not committed).
+# Build or refresh the local tenant SQLite fixture for offline tests.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 FIXTURE_DIR="$ROOT/tests/fixtures/tenant"
 DB="$FIXTURE_DIR/sqlite.rdonly.db"
+SEED="$ROOT/tests/fixtures/minimal-tenant-seed.sql"
 
 mkdir -p "$FIXTURE_DIR"
 
-if [[ -f "$DB" ]]; then
-  echo "fixture already present: $DB"
+if [[ -n "${GOLDEN_SQLITE:-}" && -f "${GOLDEN_SQLITE}" ]]; then
+  cp "${GOLDEN_SQLITE}" "$DB"
+  echo "copied tenant fixture from GOLDEN_SQLITE=${GOLDEN_SQLITE}"
   exit 0
 fi
 
-CANDIDATES=(
-  "$ROOT/../../pbx3/workingdocs/golden-sqlite.db"
-  "${GOLDEN_SQLITE:-}"
-  "/opt/pbx3/db/sqlite.rdonly.db"
-)
+if [[ "${USE_GOLDEN_SQLITE:-}" == "1" ]]; then
+  for src in \
+    "$ROOT/../../pbx3/workingdocs/golden-sqlite.db" \
+    "/opt/pbx3/db/sqlite.rdonly.db"; do
+    if [[ -f "$src" ]]; then
+      cp "$src" "$DB"
+      echo "copied tenant fixture from ${src} (USE_GOLDEN_SQLITE=1)"
+      exit 0
+    fi
+  done
+  echo "USE_GOLDEN_SQLITE=1 but no source DB found" >&2
+  exit 1
+fi
 
-for src in "${CANDIDATES[@]}"; do
-  [[ -n "$src" && -f "$src" ]] || continue
-  cp "$src" "$DB"
-  echo "copied tenant fixture from $src"
-  exit 0
-done
+if [[ ! -f "$SEED" ]]; then
+  echo "missing seed file: $SEED" >&2
+  exit 1
+fi
 
-echo "No tenant DB found. Set GOLDEN_SQLITE or copy sqlite.rdonly.db to:" >&2
-echo "  $DB" >&2
-exit 1
+rm -f "$DB"
+sqlite3 "$DB" < "$SEED"
+echo "built synthetic tenant fixture from minimal-tenant-seed.sql"

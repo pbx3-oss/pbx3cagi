@@ -25,8 +25,8 @@
 └────────┬────────┘
          │ opens read-only
          ▼
-   fixture tenant SQLite          fixture AstDB SQLite
-   (golden copy)                  (queried by responder on DATABASE GET)
+   fixture tenant SQLite          AstDB (mock JSON per scenario)
+   (synthetic seed by default)  (responder answers DATABASE GET)
 ```
 
 - **One child process per scenario** — same isolation as production; no reentrancy requirement.
@@ -39,7 +39,7 @@
 
 | Layer | Source | Phase 0 approach |
 |-------|--------|------------------|
-| **1. Tenant DB** | `/opt/pbx3/db/sqlite.rdonly.db` | Copy from golden (`pbx3/workingdocs/golden-sqlite.db` or node export). Tests point at copy via env (see deliverables). |
+| **1. Tenant DB** | `/opt/pbx3/db/sqlite.rdonly.db` | **Default:** build from committed **`minimal-tenant-seed.sql`** (synthetic tenant/extension names — safe for Git). Optional: `GOLDEN_SQLITE` / `USE_GOLDEN_SQLITE=1` for local copy of a real export (**never commit** raw customer DB). Golden QA: `PBX3CAGI_SQLITE_DB=/opt/pbx3/db/sqlite.rdonly.db`. |
 | **2. AstDB** | Asterisk `astdb.sqlite3` | Copy + seed keys (`/cfim/<shortuid>`, agent login, etc.). Responder answers `DATABASE GET family key` from SQLite or a small key→value map. **`pbx3cagi` does not open AstDB directly today** — mock is on the AGI protocol, not a code path change (optional test shim later). |
 | **3. Channel** | Asterisk channel | **Transcript only** — assert presence/absence of `EXEC Playback …`, `SET EXTENSION`, etc. Default mock: `200 result=0` for benign `EXEC` / `SET` / channel status. |
 
@@ -54,10 +54,10 @@ pbx3cagi-1.0.0/tests/
 ├── lib/
 │   └── agi_respond.py        # read child stdout, write stdin replies
 ├── fixtures/
-│   ├── tenant/
-│   │   └── sqlite.rdonly.db  # git-lfs or generate script; not committed if large
-│   └── astdb/
-│       └── astdb.sqlite3     # seeded subset
+│   ├── minimal-tenant-seed.sql   (committed synthetic data)
+│   ├── setup-tenant-db.sh
+│   └── tenant/
+│       └── sqlite.rdonly.db      (gitignored; built from seed)
 └── scenarios/
     └── cfim-local/
         ├── agi_env.txt       # AGI variable block + trailing blank line
@@ -119,7 +119,7 @@ exit 0
 | **0.1** | **Test DB path override** | Env `PBX3CAGI_SQLITE_DB` (or documented symlink-only workaround) so tests do not require writing `/opt/pbx3/db/`. |
 | **0.2** | **`run-scenario.sh`** | Runs one scenario: spawn `pbx3cagi` with fixture env + argv; capture stdout/stderr; exit code recorded. |
 | **0.3** | **`agi_respond.py`** | Parses child AGI commands on stdout; replies on stdin; `DATABASE GET` served from `astdb.json` or fixture SQLite. |
-| **0.4** | **Golden tenant fixture** | Documented copy/export procedure from **08jzwn** (or use existing golden DB copy). |
+| **0.4** | **Golden tenant fixture** | Committed **`minimal-tenant-seed.sql`**; `setup-tenant-db.sh` builds local DB. Optional live golden via `PBX3CAGI_SQLITE_DB`. |
 | **0.5** | **AstDB fixture + seed doc** | How to copy `astdb.sqlite3` and seed `/cfim/<shortuid>` for extension tests. |
 | **0.6** | **Scenario: CFIM local** | Forward target `1102` → no comfort `Playback`; sets extension/context (regression for **1.0.0-2 CFCheck**). |
 | **0.7** | **Scenario: CFIM external** | Forward target long PSTN-ish number → `Playback silence/1` (+ `pls-hold-while-try` when `playtransfer=YES`). |
@@ -131,10 +131,10 @@ exit 0
 
 ## First scenarios (priority)
 
-1. **`cfim-local`** — AstDB `cfim/<shortuid>` → `1102`; assert no hold clip.
+1. **`cfim-local`** — AstDB `cfim/testex01` → `1102`; assert no hold clip.
 2. **`cfim-external`** — AstDB → `447700900123`; assert comfort tones when enabled.
-3. **`cfim-none`** — empty AstDB; assert no forward branch.
-4. **`ingress-cluster`** — argv `PARM_CLST` vs `agi_context` (shortuid resolution); SQLite-only assertions where possible.
+3. **`cfim-none`** — empty AstDB; assert no CFIM forward branch.
+4. **`ingress-cluster`** — (future) argv `PARM_CLST` vs `agi_context`.
 
 ---
 

@@ -1,7 +1,7 @@
 agi_network: no
 agi_channel: Local/test-00000002;1
-agi_context: 9wvvnb
-agi_extension: 59507r
+agi_context: testtn01
+agi_extension: testex01
 agi_callerid: 1100
 agi_calleridname: Test Caller
 agi_uniqueid: test.cfim.002
