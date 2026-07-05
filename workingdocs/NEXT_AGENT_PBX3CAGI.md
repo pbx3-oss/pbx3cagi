@@ -6,16 +6,23 @@
 - Status: Golden **08jzwn** QA passed for CoS, CFIM, runtime/AstDB shortuid, GenAst, local CFIM divert audio.
 
 ## What was done (recent)
-- **CFCheck:** `strlen(cfnum)` for local vs external comfort tone (was `strlen(number)` on shortuid key).
-- **Golden QA merged** to `main` (pbx3, pbx3api, pbx3cagi); `goldenQA` branch deleted.
-- **Refactor plan:** Phase 0 AGI test harness documented as **required gate** before Phase 1.1+.
+- **Phase 0 harness:** Synthetic fixture, CFIM scenarios, `make test`, **`TEST_RECIPE.md`** — on **`main`**.
+- **CFCheck:** `strlen(cfnum)` for local vs external comfort tone.
+- **Golden QA merged** to `main` (pbx3, pbx3api, pbx3cagi).
 
-## What to do next
-1. **Phase 0 (required):** Implement AGI test harness per **`TEST_HARNESS.md`** — fixture tenant DB, AstDB protocol mock, transcript scenarios (CFIM local/external first). **Do not start Phase 1.1 struct refactor until Phase 0 passes.**
-2. **Phase 1.3** (dead code) after Phase 0.
-3. **Schema side project:** `pbx3/workingdocs/SQL_CHECK_CONSTRAINT_SIDEPROJECT.md` — simplify `load_cluster_cfg` NULL branching when DB is canonical.
+## Product priority (2026-07-04)
+**pbx3cagi struct refactor deferred.** Fleet + recordings first — see **`pbx3/workingdocs/TODO.md`**, **`pbx3/pbx3-directory/docs/IMPLEMENTATION_PLAN.md`**.
+
+1. **S8** — fleet checklist, IAM/`.env` hardening, tenant migration.
+2. **R1** — call recordings management (API + SPA; local disk).
+3. **S7** — recordings S3 offload.
+
+## What to do next (pbx3cagi repo)
+1. **Golden:** `make test` per **`TEST_RECIPE.md`** — sign off Phase 0.
+2. **When product allows:** Phase **1.3** (dead code) → **1.1** (structs) — run harness after each commit.
+3. **Recording capture:** likely minimal cagi changes for R1; capture already via SetRecord.
 
 ## Docs
 - **`REFACTOR_PLAN.md`** — phases and order of work
-- **`TEST_HARNESS.md`** — Phase 0 deliverables 0.1–0.8
+- **`TEST_HARNESS.md`** · **`TEST_RECIPE.md`** — Phase 0 spec and runbook
 - Source: `pbx3cagi-1.0.0/csource/pbx3cagi.c`, `cagi.c`, `pbx3cagi.h`

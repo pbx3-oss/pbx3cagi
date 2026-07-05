@@ -6,7 +6,7 @@ This folder contains documentation for AI agents working on the pbx3agi codebase
 
 | File | Purpose |
 |------|---------|
-| **REFACTOR_PLAN.md** | Incremental refactor phases; **Phase 0 harness is required** before struct/file splits |
+| **REFACTOR_PLAN.md** | Incremental refactor phases; **Phase 0 harness built**; struct refactor deferred until S8 + R1 |
 | **TEST_RECIPE.md** | **Copy-paste runbook** — `make test` on Linux/golden (start here when you forget) |
 | **TEST_HARNESS.md** | **Phase 0 spec** — offline AGI scenarios, fixtures, acceptance criteria |
 | **CODE_ASSESSMENT.md** | Overall code review: strengths, issues, architecture observations, recommendations |

@@ -165,15 +165,18 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 
 ## Suggested Order of Work
 
-0. **Baseline:** Deploy current cleanup build; golden manual QA; tag stable (**1.0.0-2** on `main`).
-1. **Phase 0 (required):** AGI test harness — **`TEST_HARNESS.md`** deliverables 0.1–0.8. **Gate:** no Phase 1.1+ until scenarios pass.
-2. **Phase 1.2** (SQLite) – **largely complete:** bound reads (`sqlQueryBind1`/`2`), shared handle, removed `sqlQuery`/`DBQuery`/`sqlSelectEq`. Remaining: optional `load_cluster_cfg` merge into same module / bind style for the OR predicate.
-3. **Phase 1.3** (dead code) – quick cleanup. Run Phase 0 suite after.
-4. **Phase 1.1** (struct for call context) – one global at a time. Run Phase 0 suite after each commit.
-5. **Phase 2.1** (command table) – then you can add commands without touching the big switch.
-6. **Phase 2.2** (DB module) – move SQLite behind `agi_sqlite.c`.
-7. **Phase 2.3** (init_call_context).
-8. **Phase 3** — pass context pointer; AGI abstraction aligns with harness mock layer.
+**Priority note (2026-07-04):** Fleet **S8** and call recordings **R1 → S7** take precedence over pbx3cagi struct refactor. Phase 0 harness is **built**; run **`make test`** on golden; resume Phase 1.3+ when product work allows.
+
+0. **Baseline:** Deploy **1.0.0-2**; golden manual QA; tag stable — **done**.
+1. **Phase 0:** AGI test harness — **`TEST_HARNESS.md`** deliverables 0.1–0.8 — **built on `main`**; golden sign-off in progress. **Gate** for Phase 1.1+ when refactor resumes.
+2. **Product (now):** **S8** fleet lifecycle → **R1** recordings management → **S7** recordings S3 — **`pbx3/pbx3-directory/docs/IMPLEMENTATION_PLAN.md`**, **`pbx3/workingdocs/TODO.md`**.
+3. **Phase 1.2** (SQLite) – **largely complete:** bound reads (`sqlQueryBind1`/`2`), shared handle, removed `sqlQuery`/`DBQuery`/`sqlSelectEq`.
+4. **Phase 1.3** (dead code) – quick cleanup. Run Phase 0 suite after. **Deferred** until S8 + R1 underway.
+5. **Phase 1.1** (struct for call context) – one global at a time. Run Phase 0 suite after each commit. **Deferred**.
+6. **Phase 2.1** (command table) – then you can add commands without touching the big switch.
+7. **Phase 2.2** (DB module) – move SQLite behind `agi_sqlite.c`.
+8. **Phase 2.3** (init_call_context).
+9. **Phase 3** — pass context pointer; AGI abstraction aligns with harness mock layer.
 
 ---
 
@@ -190,9 +193,10 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 
 ## Summary
 
-- **Immediate:** Phase 0 AGI test harness (required gate).
-- **Short term:** Group globals into structs, tidy the DB block and remove duplication, remove or isolate dead code, introduce a command table.
-- **Medium term**: Extract DB into `agi_db.c`, and call context init into a single function; keep one binary.
+- **Immediate (product):** **S8** fleet ops → **R1** recordings management → **S7** recordings S3 — see **`pbx3/workingdocs/TODO.md`**.
+- **Immediate (pbx3cagi):** Phase 0 harness **built**; golden **`make test`**; **defer** Phase 1.1+ struct refactor until fleet/recordings underway.
+- **Short term (when refactor resumes):** Group globals into structs, tidy dead code, introduce a command table — run harness after each step.
+- **Medium term**: Extract DB into `agi_sqlite.c`, and call context init into a single function; keep one binary.
 - **Long term**: Pass a single context pointer into all handlers, then optionally split handlers by domain and introduce a small AGI abstraction.
 
 This keeps the same process, same binary name, and same external behaviour while making the codebase easier to work on and test.
@@ -209,13 +213,14 @@ This keeps the same process, same binary name, and same external behaviour while
 
 **What’s done**
 - **Cleanup + SQLite refactor (pbx3cagi repo):** Build fixes, bsd_compat, `g_cluster_cfg` / `load_cluster_cfg`, redundant cluster re-queries removed, shared SQLite handle, **`sqlQueryBind1` / `sqlQueryBind2`** for all runtime reads, **`sqlQuery` removed**, `sqlSelectEq` removed (inline SQL), **`CheckState` `rescols` index fix**, compiled binary **gitignored**. Calls/SQL verified on target.
+- **Phase 0 harness (2026-07-04):** On **`main`** — synthetic fixture, CFIM scenarios, **`make test`**, **`TEST_RECIPE.md`**. Golden validation ongoing.
 - **Refactor plan:** This document — Asterisk DB vs pbx3 SQLite; Phase 1.2 SQLite path effectively done.
 
 **What’s next**
-1. **Phase 0 (required):** AGI test harness — **`TEST_HARNESS.md`**. Gate for Phase 1.1+ refactor.
-2. **Packaging:** Pre-built amd64/arm64 in deb install tree; `debian/rules` runs `make` on target arch.
-3. **Schema side project:** `pbx3/workingdocs/SQL_CHECK_CONSTRAINT_SIDEPROJECT.md` — then simplify `load_cluster_cfg` NULL branching if desired.
-4. **Phase 1.3** (dead code) / **1.1** (structs) / **2.x** after Phase 0 passes.
+1. **Product priority:** **S8** fleet → **R1** recordings management → **S7** S3 offload — **`pbx3/pbx3-directory/docs/IMPLEMENTATION_PLAN.md`**, **`pbx3/workingdocs/TODO.md`**.
+2. **pbx3cagi:** Golden **`make test`** sign-off; **defer Phase 1.3+** until product work allows.
+3. **When refactor resumes:** Phase 1.3 (dead code) → 1.1 (structs) → 2.x — run harness after each step.
+4. **Packaging:** Pre-built amd64/arm64 in deb install tree; `debian/rules` runs `make` on target arch.
 
 **Where things live**
 - Plan: `pbx3cagi/workingdocs/REFACTOR_PLAN.md`
