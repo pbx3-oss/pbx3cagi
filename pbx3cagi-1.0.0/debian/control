@@ -2,9 +2,10 @@ Source: pbx3cagi
 Section: network
 Priority: extra
 Maintainer: root <root@wheezy224.aelintra.com>
+Build-Depends: debhelper-compat (= 13)
 
 Package: pbx3cagi
-Architecture: any
+Architecture: all
 Depends: ${misc:Depends}, asterisk
 Description: pbx3cagi
  pbx3cagi switching Engine.
