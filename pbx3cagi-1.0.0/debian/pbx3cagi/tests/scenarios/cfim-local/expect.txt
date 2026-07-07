@@ -1,0 +1,5 @@
+must-not EXEC Playback pls-hold-while-try
+must-not EXEC Playback silence/1
+must SET EXTENSION 1102
+must SET CONTEXT testtn01
+exit 0

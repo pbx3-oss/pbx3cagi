@@ -1,0 +1,35 @@
+ dpkg-buildpackage -us -uc -ui -b
+dpkg-buildpackage: info: source package pbx3cagi
+dpkg-buildpackage: info: source version 1.0.0-3
+dpkg-buildpackage: info: source distribution stable
+dpkg-buildpackage: info: source changed by KoKo <admin@aelintra.com>
+ dpkg-source --before-build .
+dpkg-buildpackage: info: host architecture arm64
+ fakeroot debian/rules clean
+dh_testdir
+dh_testroot
+dh_clean -d
+ debian/rules build
+dh_testdir
+ fakeroot debian/rules binary
+dh_testdir
+dh_testdir
+dh_testroot
+dh_prep
+dh_installdirs
+dh_installdocs
+dh_installchangelogs
+find . -maxdepth 1 -mindepth 1 -not -name debian -print0 | \
+	xargs -0 -r -i cp -a {} debian/pbx3cagi
+dh_compress
+dh_makeshlibs
+dh_installdeb
+dh_gencontrol
+dh_md5sums
+dh_builddeb
+dpkg-deb: building package 'pbx3cagi' in '../pbx3cagi_1.0.0-3_all.deb'.
+ dpkg-genbuildinfo --build=binary -O../pbx3cagi_1.0.0-3_arm64.buildinfo
+ dpkg-genchanges --build=binary -O../pbx3cagi_1.0.0-3_arm64.changes
+dpkg-genchanges: info: binary-only upload (no source code included)
+ dpkg-source --after-build .
+dpkg-buildpackage: info: binary-only upload (no source included)

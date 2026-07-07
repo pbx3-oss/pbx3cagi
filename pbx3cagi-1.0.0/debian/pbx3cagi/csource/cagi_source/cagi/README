@@ -1,0 +1,29 @@
+If you have used PHPAGI, CAGI will hopefully be easy to use as it is based on 
+it.  The included cagisample.c is all you really need to do. Just add cagi.o 
+to your compile and #include cagi.h to your program. There is a Makefile as well.
+
+If you want to use fast agi, there is a fastcagi binary that can execute any AGI app.
+
+Passing arguments to the command can be done using url formatted arguments. 
+AGI(agi://192.168.1.5/cagisample?-first=1&-second=2) will execute cagisample -first 1 -second 2
+
+Add this line to /etc/services on remote AGI server:
+fastagi 4573/tcp                        # Asterisk AGI
+
+Then make a file /etc/xinetd.d/fastagi on remote AGI server: (there is a file in tar fastagi.xinetd you can copy)
+# default: off
+# description: fastagi is a remote AGI interface
+#
+service fastagi
+{
+        socket_type  = stream
+        user         = root
+        group        = nobody
+        server       = /var/spool/asterisk/agi-bin/fastcagi
+        server_args  = --logfile /var/log/fastagi.log --agidir /var/spool/asterisk/agi-bin/
+        wait         = no
+        protocol     = tcp
+        bind         = 127.0.0.01
+        disable      = no
+}
+

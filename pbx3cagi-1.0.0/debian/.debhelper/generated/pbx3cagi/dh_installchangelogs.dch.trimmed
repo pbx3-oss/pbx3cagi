@@ -1,0 +1,14 @@
+pbx3cagi (1.0.0-3) stable; urgency=medium
+
+  * Packaging: match sailhpe (SARK 6.0.0) — Architecture all, rules copy usr/
+    tree only (no compile in debuild). Stage pbx3cagi.amd64 and pbx3cagi.arm64
+    under usr/share/asterisk/agi-bin/ at package root before debuild.
+
+ -- KoKo <admin@aelintra.com>  Mon, 07 Jul 2026 20:35:00 +0000
+
+pbx3cagi (1.0.0-2) stable; urgency=medium
+
+  * CFCheck: local vs external forward uses forward target length.
+  * Rebuilt amd64 and arm64 binaries.
+
+ -- KoKo <admin@aelintra.com>  Sat, 04 Jul 2026 17:30:00 +0000

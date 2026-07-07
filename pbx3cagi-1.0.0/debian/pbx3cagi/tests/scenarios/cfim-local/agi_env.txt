@@ -1,0 +1,12 @@
+agi_network: no
+agi_channel: Local/test-00000001;1
+agi_context: testtn01
+agi_extension: testex01
+agi_callerid: 1100
+agi_calleridname: Test Caller
+agi_uniqueid: test.cfim.001
+agi_dnid: 1101
+agi_rdnis: unknown
+agi_type: Local
+agi_language: en
+
