@@ -1,10 +1,11 @@
 #!/usr/bin/make -f
 # Sailhpe model (Architecture: all): no compile in debuild.
-# Required: usr/share/asterisk/agi-bin/pbx3cagi.arm64
-# Optional:  usr/share/asterisk/agi-bin/pbx3cagi.amd64 (plug in when built)
+# Required: prebuilt/agi-bin/pbx3cagi.arm64
+# Optional: prebuilt/agi-bin/pbx3cagi.amd64
 
 PACKAGE=$(shell dh_listpackages)
-AGI_BIN=usr/share/asterisk/agi-bin
+PREBUILT=prebuilt/agi-bin
+AGI_DEST=usr/share/asterisk/agi-bin
 
 build:
 	dh_testdir
@@ -13,7 +14,6 @@ clean:
 	dh_testdir
 	dh_testroot
 	dh_clean -d
-	rm -rf usr
 
 binary-indep: build
 
@@ -26,10 +26,11 @@ binary-arch: build
 	dh_installdocs
 	dh_installchangelogs
 
-	@test -f $(AGI_BIN)/pbx3cagi.arm64 || (echo "ERROR: missing $(AGI_BIN)/pbx3cagi.arm64 — run scripts/seed-deb-binaries.sh before debuild" >&2; exit 1)
+	@test -f $(PREBUILT)/pbx3cagi.arm64 || (echo "ERROR: missing $(PREBUILT)/pbx3cagi.arm64 — run scripts/seed-deb-binaries.sh before debuild" >&2; exit 1)
 
-	mkdir -p debian/$(PACKAGE)
-	cp -a usr debian/$(PACKAGE)/
+	mkdir -p debian/$(PACKAGE)/$(AGI_DEST)
+	cp -a $(PREBUILT)/pbx3cagi.arm64 debian/$(PACKAGE)/$(AGI_DEST)/
+	@if [ -f $(PREBUILT)/pbx3cagi.amd64 ]; then cp -a $(PREBUILT)/pbx3cagi.amd64 debian/$(PACKAGE)/$(AGI_DEST)/; fi
 
 	dh_compress
 	dh_makeshlibs

@@ -16,8 +16,9 @@ pbx3cagi-1.0.0/usr/
 *.changes
 *.deb
 
-# Pre-built AGI binaries staged at package root usr/ before debuild (sailhpe model)
-pbx3cagi-1.0.0/usr/share/asterisk/agi-bin/pbx3cagi.*
+# Pre-built AGI binaries staged before debuild (survives debian/rules clean)
+pbx3cagi-1.0.0/prebuilt/
+pbx3cagi-1.0.0/usr/
 
 # Phase 0 test fixtures (copy locally via tests/fixtures/setup-tenant-db.sh)
 pbx3cagi-1.0.0/tests/fixtures/tenant/*.db

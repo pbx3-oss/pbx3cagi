@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # Stage pbx3cagi binaries for debuild (Architecture: all; arm64 required on AWS fleet).
+# Binaries live in prebuilt/agi-bin/ (survives debuild clean).
 #
 # Usage (from repo root):
-#   ./scripts/seed-deb-binaries.sh --build-local          # make arm64 on golden
+#   ./scripts/seed-deb-binaries.sh --build-local
 #   PBX3CAGI_ARM64=/path/pbx3cagi ./scripts/seed-deb-binaries.sh
-#   PBX3CAGI_AMD64=/path/pbx3cagi ./scripts/seed-deb-binaries.sh   # optional plug-in
+#   PBX3CAGI_AMD64=/path/pbx3cagi ./scripts/seed-deb-binaries.sh   # optional
 #
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PKG="$ROOT/pbx3cagi-1.0.0"
 CSOURCE="$PKG/csource"
-DEST="$PKG/usr/share/asterisk/agi-bin"
+DEST="$PKG/prebuilt/agi-bin"
 BUILD_LOCAL=0
 
 while [[ $# -gt 0 ]]; do
@@ -26,13 +27,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 mkdir -p "$DEST"
-# Do not rm existing amd64 when only refreshing arm64
-if [[ -z "${PBX3CAGI_AMD64:-}" && "$BUILD_LOCAL" -eq 0 ]]; then
+if [[ -n "${PBX3CAGI_ARM64:-}" || "$BUILD_LOCAL" -eq 1 ]]; then
   rm -f "$DEST/pbx3cagi.arm64"
+fi
+if [[ -n "${PBX3CAGI_AMD64:-}" ]]; then
+  rm -f "$DEST/pbx3cagi.amd64"
 fi
 
 stage_one() {
-  local label="$1" src="$2" dest="$DEST/pbx3cagi.$label"
+  local label="$1"
+  local src="$2"
+  local dest="$DEST/pbx3cagi.$label"
   if [[ ! -f "$src" ]]; then
     echo "ERROR: missing $label binary: $src" >&2
     exit 1
@@ -63,13 +68,11 @@ fi
 
 if [[ ! -f "$DEST/pbx3cagi.arm64" ]]; then
   echo "ERROR: $DEST/pbx3cagi.arm64 not staged (required for AWS arm64 fleet)" >&2
-  echo "  ./scripts/seed-deb-binaries.sh --build-local   # on golden" >&2
-  echo "  PBX3CAGI_ARM64=./csource/pbx3cagi ./scripts/seed-deb-binaries.sh" >&2
   exit 1
 fi
 
 if [[ -f "$DEST/pbx3cagi.amd64" ]]; then
-  echo "OK: arm64 + amd64 staged under $DEST"
+  echo "OK: arm64 + amd64 in $DEST"
 else
-  echo "OK: arm64 staged under $DEST (amd64 omitted — add later with PBX3CAGI_AMD64=...)"
+  echo "OK: arm64 in $DEST (amd64 optional — add later with PBX3CAGI_AMD64=...)"
 fi

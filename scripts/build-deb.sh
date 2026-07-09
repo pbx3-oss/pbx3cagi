@@ -26,6 +26,12 @@ command -v debuild >/dev/null || { echo "ERROR: debuild not found" >&2; exit 1; 
 
 "$ROOT/scripts/seed-deb-binaries.sh" "${SEED_ARGS[@]}"
 
+# If already staged (e.g. seed ran without --build-local), skip re-seed failure
+if [[ ! -f "$PKG/prebuilt/agi-bin/pbx3cagi.arm64" ]]; then
+  echo "ERROR: arm64 binary not staged — run seed-deb-binaries.sh first" >&2
+  exit 1
+fi
+
 cd "$PKG"
 rm -rf debian/pbx3cagi debian/.debhelper
 debuild -us -uc -b
