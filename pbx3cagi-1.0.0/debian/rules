@@ -1,10 +1,10 @@
 #!/usr/bin/make -f
-# Same packaging model as sailhpe (SARK 6.0.0): no compile in rules.
-# Stage pre-built binaries under usr/ at package root (sibling to debian/), then debuild.
-#   pbx3cagi-1.0.0/usr/share/asterisk/agi-bin/pbx3cagi.amd64
-#   pbx3cagi-1.0.0/usr/share/asterisk/agi-bin/pbx3cagi.arm64
+# Sailhpe model (Architecture: all): no compile in debuild.
+# Required: usr/share/asterisk/agi-bin/pbx3cagi.arm64
+# Optional:  usr/share/asterisk/agi-bin/pbx3cagi.amd64 (plug in when built)
 
 PACKAGE=$(shell dh_listpackages)
+AGI_BIN=usr/share/asterisk/agi-bin
 
 build:
 	dh_testdir
@@ -13,6 +13,7 @@ clean:
 	dh_testdir
 	dh_testroot
 	dh_clean -d
+	rm -rf usr
 
 binary-indep: build
 
@@ -25,9 +26,10 @@ binary-arch: build
 	dh_installdocs
 	dh_installchangelogs
 
-# Copy the package's files (usr/, etc.) — not debian/
-	find . -maxdepth 1 -mindepth 1 -not -name debian -print0 | \
-		xargs -0 -r -i cp -a {} debian/$(PACKAGE)
+	@test -f $(AGI_BIN)/pbx3cagi.arm64 || (echo "ERROR: missing $(AGI_BIN)/pbx3cagi.arm64 — run scripts/seed-deb-binaries.sh before debuild" >&2; exit 1)
+
+	mkdir -p debian/$(PACKAGE)
+	cp -a usr debian/$(PACKAGE)/
 
 	dh_compress
 	dh_makeshlibs

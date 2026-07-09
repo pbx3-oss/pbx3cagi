@@ -1,4 +1,0 @@
-must EXEC Playback silence/1
-must EXEC Playback pls-hold-while-try
-must SET EXTENSION 447700900123
-exit 0

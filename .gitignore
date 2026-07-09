@@ -9,8 +9,12 @@ sarkhpe
 # Debian package build output (regenerate on Linux builder)
 pbx3cagi-1.0.0/debian/files
 pbx3cagi-1.0.0/debian/.agi-stash/
+pbx3cagi-1.0.0/debian/pbx3cagi/
+pbx3cagi-1.0.0/debian/.debhelper/
+pbx3cagi-1.0.0/usr/
 *.buildinfo
 *.changes
+*.deb
 
 # Pre-built AGI binaries staged at package root usr/ before debuild (sailhpe model)
 pbx3cagi-1.0.0/usr/share/asterisk/agi-bin/pbx3cagi.*

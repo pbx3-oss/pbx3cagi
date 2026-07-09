@@ -1,3 +1,12 @@
+pbx3cagi (1.0.0-4) stable; urgency=medium
+
+  * Packaging fix: debian/rules copies only staged usr/ (not csource/tests).
+    Architecture remains all; arm64 binary required at debuild, amd64 optional
+    (plug in via seed-deb-binaries.sh when available). Remove corrupted
+    debian/pbx3cagi/ from VCS; add scripts/seed-deb-binaries.sh and build-deb.sh.
+
+ -- KoKo <admin@aelintra.com>  Thu, 09 Jul 2026 21:00:00 +0000
+
 pbx3cagi (1.0.0-3) stable; urgency=medium
 
   * Packaging: match sailhpe (SARK 6.0.0) — Architecture all, rules copy usr/
