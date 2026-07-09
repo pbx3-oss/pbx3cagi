@@ -162,6 +162,31 @@ static const char *sqlitedb_path(void)
     return SQLITEDB;
 }
 
+/* Fleet Phase A: dial PSTN via fixed Egress trunk (no path failover on node). */
+static int pbx3_fleet_mode(void)
+{
+    const char *env = getenv("PBX3_FLEET_MODE");
+    if (env != NULL && env[0] != '\0')
+    {
+        if (!strcasecmp(env, "1") || !strcasecmp(env, "true") || !strcasecmp(env, "yes"))
+        {
+            return 1;
+        }
+        if (!strcasecmp(env, "0") || !strcasecmp(env, "false") || !strcasecmp(env, "no"))
+        {
+            return 0;
+        }
+    }
+    {
+        const char *active = sqlQueryBind1("SELECT active FROM trunks WHERE pkey=?", "Egress");
+        if (active != NULL && !strcmp(active, "YES"))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void sqlCloseSharedHandle(void)
 {
     if (g_sqlite_handle != NULL)
@@ -1344,6 +1369,21 @@ void OutRoute()
             last = 0;
         }
     }
+    /*
+     * Fleet nodes: single Egress trunk to SBC — no multi-path failover (Phase A).
+     */
+    if (pbx3_fleet_mode())
+    {
+        strlcpy(path[0], "Egress", sizeof(path[0]));
+        last = 0;
+        strlcpy(active, sqlQueryBind1("SELECT active FROM trunks WHERE pkey=?", path[0]), sizeof(active));
+        if (!strcmp(active, "YES") && strcmp(path[0], "None"))
+        {
+            OutVoip(path[0]);
+        }
+        return;
+    }
+
     /*
      *  iterate through the available trunks
      *  i is just a counter, the integer 'last'
