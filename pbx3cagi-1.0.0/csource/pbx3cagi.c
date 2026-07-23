@@ -1906,14 +1906,15 @@ void PrepDial(char *number, char *type, char *twin, char *vmbox)
 
 /**
  *  begin to set up the dialstring.
- *  Keep tenant domain in the Request-URI so the SBC usrloc lookup is
+ *  Fleet only: keep tenant domain in the Request-URI so SBC usrloc is
  *  domain-aware (Dial(PJSIP/shortuid) alone uses AOR contact @VIP → 404
- *  when multiple tenants share one instance/setid).
+ *  when multiple tenants share one instance/setid). Singleton (no SBC)
+ *  keeps Dial(PJSIP/shortuid) and uses the registered contact directly.
  */
     strlcpy(dialString, SIPDRIVER, sizeof(dialString));
     strlcat(dialString, "/", sizeof(dialString));
     strlcat(dialString, number, sizeof(dialString));
-    if (g_cluster_cfg.fqdn[0] != '\0')
+    if (pbx3_fleet_mode() && g_cluster_cfg.fqdn[0] != '\0')
     {
         strlcat(dialString, "/sip:", sizeof(dialString));
         strlcat(dialString, number, sizeof(dialString));

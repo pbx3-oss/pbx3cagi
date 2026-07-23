@@ -1,3 +1,10 @@
+pbx3cagi (1.0.0-6) stable; urgency=medium
+
+  * PrepDial tenant-AoR URI only when pbx3_fleet_mode() (Egress / PBX3_FLEET_MODE).
+    Singleton keeps Dial(PJSIP/shortuid) against the registered contact.
+
+ -- KoKo <admin@aelintra.com>  Thu, 23 Jul 2026 22:10:00 +0000
+
 pbx3cagi (1.0.0-5) stable; urgency=medium
 
   * PrepDial: Dial(PJSIP/shortuid/sip:shortuid@tenant.fqdn) so SBC usrloc
