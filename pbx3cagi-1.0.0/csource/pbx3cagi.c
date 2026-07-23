@@ -269,7 +269,8 @@ int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg)
         "SELECT abstimeout, voip_max, allow_hash_xfer, play_beep, play_busy, play_congested, "
         "play_transfer, voice_instr, bounce_alert, blind_busy, int_ring_delay, maxin, ringdelay, lterm, "
         "cfwd_progress, cfwd_answer, ivr_key_wait, ivr_digit_wait, syspass, spy_pass, dynamicfeatures, "
-        "clusterclid, chanmax, usemohcustom, callrecord_1, masteroclo, oclo, routeoverride "
+        "clusterclid, chanmax, usemohcustom, callrecord_1, masteroclo, oclo, routeoverride, "
+        "fqdn, cname, domain, shortuid "
         "FROM cluster WHERE pkey='%s' OR shortuid='%s'",
         esc, esc);
 
@@ -421,6 +422,26 @@ int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg)
     {
         const unsigned char *t = sqlite3_column_text(stmt, 27);
         strlcpy(cfg->routeoverride, t ? (const char *)t : "", sizeof(cfg->routeoverride));
+    }
+    {
+        /* Prefer fqdn, then cname, else shortuid.domain (phones register as user@tenant.fqdn). */
+        const unsigned char *fq = sqlite3_column_text(stmt, 28);
+        const unsigned char *cn = sqlite3_column_text(stmt, 29);
+        const unsigned char *dom = sqlite3_column_text(stmt, 30);
+        const unsigned char *su = sqlite3_column_text(stmt, 31);
+        cfg->fqdn[0] = '\0';
+        if (fq != NULL && fq[0] != '\0')
+        {
+            strlcpy(cfg->fqdn, (const char *)fq, sizeof(cfg->fqdn));
+        }
+        else if (cn != NULL && cn[0] != '\0')
+        {
+            strlcpy(cfg->fqdn, (const char *)cn, sizeof(cfg->fqdn));
+        }
+        else if (su != NULL && su[0] != '\0' && dom != NULL && dom[0] != '\0')
+        {
+            snprintf(cfg->fqdn, sizeof(cfg->fqdn), "%s.%s", (const char *)su, (const char *)dom);
+        }
     }
 
     cfg->loaded = 1;
@@ -1884,11 +1905,21 @@ void PrepDial(char *number, char *type, char *twin, char *vmbox)
     AGITool_exec(&agi, &res, "Set", setcdrcmduser);
 
 /**
- *  begin to set up the diasltring
+ *  begin to set up the dialstring.
+ *  Keep tenant domain in the Request-URI so the SBC usrloc lookup is
+ *  domain-aware (Dial(PJSIP/shortuid) alone uses AOR contact @VIP → 404
+ *  when multiple tenants share one instance/setid).
  */
     strlcpy(dialString, SIPDRIVER, sizeof(dialString));
     strlcat(dialString, "/", sizeof(dialString));
     strlcat(dialString, number, sizeof(dialString));
+    if (g_cluster_cfg.fqdn[0] != '\0')
+    {
+        strlcat(dialString, "/sip:", sizeof(dialString));
+        strlcat(dialString, number, sizeof(dialString));
+        strlcat(dialString, "@", sizeof(dialString));
+        strlcat(dialString, g_cluster_cfg.fqdn, sizeof(dialString));
+    }
 
 /**
  *  Set the ring timeout for everything but dials coming in off the 

@@ -78,6 +78,7 @@ typedef struct cluster_cfg {
     char masteroclo[16];
     char oclo[16];
     char routeoverride[32];
+    char fqdn[128]; /* tenant SIP domain (cluster.fqdn / cname) for RURI */
 } cluster_cfg_t;
 
 extern cluster_cfg_t g_cluster_cfg;
