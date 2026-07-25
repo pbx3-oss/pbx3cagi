@@ -104,6 +104,7 @@ void OutVoip(char *key);
 int Authenticate(char* password);
 int GetRecOption();
 void LepDial();
+void PostDial();
 void PrepDial(char* number, char* type, char* twin, char* vmbox);
 char* SetRecord(char* extension, char* compass);
 void Page();

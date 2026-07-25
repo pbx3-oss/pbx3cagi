@@ -456,7 +456,7 @@ int main(int argc, char **argv)
     char chardig[4] = {'\0'};
 
     char *cmdTab[11] =
-        {"OutTrunk", "OutRoute", "LepDial", "Ingress", "Dial", "IVR", "OutQmt"};
+        {"OutTrunk", "OutRoute", "LepDial", "Ingress", "Dial", "IVR", "OutQmt", "PostDial"};
         
     int i = 0;
 
@@ -653,6 +653,10 @@ int main(int argc, char **argv)
         break;
     case 7:
         OutQmt();       // Queuemetrics outbound stuff 
+        break;
+    case 8:
+        /* Phase G: after dialplan Dial(${PBX3_DIAL}) — CFBS / VM / bounce */
+        PostDial();
         break;
 
 
@@ -1648,16 +1652,16 @@ void LepDial()
 
     char vmbox[64] = {'\0'};
     char blindtransfer[MAX_EXT_LEN] = {'\0'};
-    char transferer[MAX_EXT_LEN] = {'\0'};
     char cellphone[MAX_EXT_LEN] = {'\0'};
     char celltwindial[MAX_EXT_LEN] = {'\0'};
     char *pBtr = &blindtransfer[4];
-    char calleridsave[MAX_EXT_LEN] = {'\0'};
-    char dstatus[16] = {'\0'};
     char vmflags[4] = {'\0'};
     char calledCluster[MAX_CLUSTER_LEN] = {'\0'};
-    char includeClusters[8192] = {'\0'};
     char extalert[128] = {'\0'};
+    char transferer[MAX_EXT_LEN] = {'\0'};
+
+    /* Phase G: dialplan gates Dial on non-empty PBX3_DIAL — clear so CFIM/VM early exits skip Dial. */
+    AGITool_set_variable(&agi, &res, "PBX3_DIAL", "");
 
     AGITool_get_variable(&agi, &res, "BLINDTRANSFER");  //set in extensions.conf
     strlcpy(blindtransfer, res.data, sizeof(blindtransfer));
@@ -1747,8 +1751,8 @@ void LepDial()
     AGITool_set_variable(&agi, &res, "__PICKUPMARK", extension);
 
 /**
- *  Add a twin if we have one enabled
- */
+  *  Add a twin if we have one enabled
+  */
     strlcpy(cellphone, DBGet("srktwin", extension), sizeof(cellphone));
     if (strcmp(cellphone, ""))
     {
@@ -1757,39 +1761,67 @@ void LepDial()
         strlcat(celltwindial, "@", sizeof(celltwindial));
         strlcat(celltwindial, myClusterContext, sizeof(celltwindial));
     }
+    /* Phase G: PrepDial sets PBX3_DIAL and returns — dialplan Dial owns the bridge. */
     PrepDial(extension, "", celltwindial, vmbox);
+    return;
+}
 
 /**
- *  SET both the dialstring, the CFBS outcome AND voicemail here so
- *  the dialplan doesn't have to ever come back through the same exten
- *  on this call-leg - maybe
+ *  Phase G — after dialplan Dial(${PBX3_DIAL}).
+ *  Former LepDial post-bridge policy. Dialplan skips this AGI on ANSWER/CANCEL
+ *  (dead-AGI cold-start avoidance); still no-op those statuses defensively.
  */
+void PostDial()
+{
 
+    DebugFunctionTrace(__FUNCTION__);
 
-/**
- * 
- *  Below here is after the dial has ended
- *  We should likely split this here to release the agi
- *  during the call
- * 
- */
+    char vmbox[64] = {'\0'};
+    char blindtransfer[MAX_EXT_LEN] = {'\0'};
+    char transferer[MAX_EXT_LEN] = {'\0'};
+    char *pBtr = &blindtransfer[4];
+    char calleridsave[MAX_EXT_LEN] = {'\0'};
+    char dstatus[16] = {'\0'};
+    char vmflags[4] = {'\0'};
+    char calledCluster[MAX_CLUSTER_LEN] = {'\0'};
+    char dialed[MAX_EXT_LEN] = {'\0'};
 
-    /*
-     * read any stuff hanging around in the pipe
-     */
-    //	AGITool_Init(&agi);
+    if (myargc > 2 && myargv[2] != NULL && PARM_KEY[0] != '\0')
+    {
+        strlcpy(dialed, PARM_KEY, sizeof(dialed));
+    }
+    else
+    {
+        strlcpy(dialed, extension, sizeof(dialed));
+    }
 
-    AGITool_get_variable(&agi, &res, "DIALSTATUS"); // DIALSTATUS is the status of the call - answered, busy, cancelled
+    AGITool_get_variable(&agi, &res, "BLINDTRANSFER");
+    strlcpy(blindtransfer, res.data, sizeof(blindtransfer));
+
+    sqlQueryBind2("SELECT dvrvmail,cluster FROM ipphone WHERE shortuid=? AND cluster=?", dialed, myCluster);
+    strlcpy(vmbox, rescols[0], sizeof(vmbox));
+    strlcpy(calledCluster, rescols[1], sizeof(calledCluster));
+
+    if (strcmp(vmbox, "None"))
+    {
+        strlcat(vmbox, "@", sizeof(vmbox));
+        strlcat(vmbox, calledCluster, sizeof(vmbox));
+    }
+
+    strlcpy(vmflags, ASTDLIM, sizeof(vmflags));
+    if (!strcmp(g_cluster_cfg.voiceinstr, "NO"))
+    {
+        strlcat(vmflags, "s", sizeof(vmflags));
+    }
+
+    AGITool_get_variable(&agi, &res, "DIALSTATUS");
     strcpy(dstatus, res.data);
-    if (!strcmp(dstatus, "ANSWER"))
-    { // shouldn't ever happen when running HUP'd
-
+    if (!strcmp(dstatus, "ANSWER") || !strcmp(dstatus, "CANCEL"))
+    {
         return;
     }
 
-    // check busy or no-answer call forwards
-
-    if (!CFCheck("cfbs", extension))
+    if (!CFCheck("cfbs", dialed))
     {
         return;
     }
@@ -1800,7 +1832,7 @@ void LepDial()
         {
             if (strcmp(blindtransfer, ""))
             {
-                if (strcmp(agi_dnid, extension))
+                if (strcmp(agi_dnid, dialed))
                 {
                     if (g_cluster_cfg.bounce_alert[0] != '\0')
                     {
@@ -1821,20 +1853,15 @@ void LepDial()
         else
         {
             strlcat(vmflags, "u", sizeof(vmflags));
-            //               AGITool_exec(&agi,&res,"Playback","silence/1");
             AGITool_exec(&agi, &res, "Voicemail", strcat(vmbox, vmflags));
             return;
         }
     }
-    //
-    //    BUSY/CONGESTION/CHANUNAVAIL/Bounce-now-busy & yada yada yada
-    //
-    //    if (!strcmp(dstatus, "BUSY")) {
     if (!strcmp(vmbox, "None"))
     {
         if (strcmp(blindtransfer, ""))
         {
-            if (strcmp(agi_dnid, extension))
+            if (strcmp(agi_dnid, dialed))
             {
                 AGITool_exec(&agi, &res, "Playback", "silence/1");
                 if (!strcmp(g_cluster_cfg.playtransfer, "YES"))
@@ -1998,26 +2025,11 @@ void PrepDial(char *number, char *type, char *twin, char *vmbox)
         strlcat(dialString, "m", sizeof(dialString));
     }
 /**
- *  Phase E (queue): decide only — set PBX3_DIAL for dialplan Dial(${PBX3_DIAL}).
- *  Short-run AGI; dialplan owns the bridge. LepDial still EXEC Dial here until Phase G.
+ *  Phase E (queue) + Phase G (LepDial): decide only — set PBX3_DIAL for
+ *  dialplan Dial(${PBX3_DIAL}). Short-run AGI; dialplan owns the bridge.
  */
-    if (!strcmp(type, "queue"))
-    {
-        AGITool_set_variable(&agi, &res, "PBX3_DIAL", dialString);
-        return;
-    }
-/**
- *  Send it to the dialler
- */
-    AGITool_exec(&agi, &res, "Dial", dialString);
-/**
- * placeHolder
- 
-        AGITool_set_priority(&agi, &res, 1);
-        AGITool_set_extension(&agi, &res, cfnum);
-        AGITool_set_context(&agi, &res, myClusterContext);
-*/
-        return;
+    AGITool_set_variable(&agi, &res, "PBX3_DIAL", dialString);
+    return;
 }
 
 char *SetRecord(char *key, char *compass)

@@ -64,7 +64,7 @@ Scenarios use **`astdb.json`** per scenario (`family/key` → value). See `fixtu
 |----------|-------|---------|
 | `cfim-local` | CFIM → `1102` | No comfort tones; `SET EXTENSION 1102` |
 | `cfim-external` | CFIM → `447700900123` | `Playback silence/1` + hold clip |
-| `cfim-none` | empty | Normal LepDial; no CFIM forward |
+| `cfim-none` | empty | Normal LepDial PreDial; `SET VARIABLE PBX3_DIAL`; no `EXEC Dial` |
 
 ## Layout
 
