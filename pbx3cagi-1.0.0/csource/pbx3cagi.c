@@ -645,7 +645,8 @@ int main(int argc, char **argv)
         Ingress();      // inbound call from peer
         break;
     case 5:
-        PrepDial(PARM_KEY,PARM_PM1,"","");   // direct dial
+        /* Direct dial, or Phase E Q*: PM1=queue → PrepDial set-and-return (PBX3_DIAL) */
+        PrepDial(PARM_KEY,PARM_PM1,"","");
         break;
     case 6:
         IVR(PARM_KEY);          // IVR menus
@@ -1995,6 +1996,15 @@ void PrepDial(char *number, char *type, char *twin, char *vmbox)
     if (!strcmp(res.data, "YES"))
     {
         strlcat(dialString, "m", sizeof(dialString));
+    }
+/**
+ *  Phase E (queue): decide only — set PBX3_DIAL for dialplan Dial(${PBX3_DIAL}).
+ *  Short-run AGI; dialplan owns the bridge. LepDial still EXEC Dial here until Phase G.
+ */
+    if (!strcmp(type, "queue"))
+    {
+        AGITool_set_variable(&agi, &res, "PBX3_DIAL", dialString);
+        return;
     }
 /**
  *  Send it to the dialler
