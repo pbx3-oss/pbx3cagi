@@ -33,19 +33,23 @@
 #define EOF_MARKER 26    /* Decimal code of DOS end-of-file marker */
 #define TRUE 1
 #define FALSE 0
-#define PARM_NUM myargc
-#define PARM_CMD *(myargv+1)
-#define PARM_KEY *(myargv+2)
-#define PARM_CLST *(myargv+3)
-#define PARM_PM1 *(myargv+4)
-#define PARM_PM2 *(myargv+5)
-#define PARM_PM3 *(myargv+6)
+/* Dialplan AGI argv (script name at [0]); see g_parms. */
+#define PARM_NUM (g_parms.argc)
+#define PARM_CMD (*(g_parms.argv+1))
+#define PARM_KEY (*(g_parms.argv+2))
+#define PARM_CLST (*(g_parms.argv+3))
+#define PARM_PM1 (*(g_parms.argv+4))
+#define PARM_PM2 (*(g_parms.argv+5))
+#define PARM_PM3 (*(g_parms.argv+6))
 #define SQLITEDB "/opt/pbx3/db/sqlite.rdonly.db"
 #define SOUNDIR "/usr/share/asterisk/extra-sounds/"
 #define QLOG "/var/log/asterisk/queue_log" 
 #define SIPDRIVER "PJSIP"
 #define ASTDLIM ","
-  
+
+/* Incomplete types — full defs in cagi.h (avoid typedef redefinition). */
+struct _asterisk_tools_;
+struct _asterisk_cmd_result_;
 
 /* Tenant cluster row: loaded once per AGI invocation from SQLite `cluster` (replaces generator-injected Asterisk globals). */
 typedef struct cluster_cfg {
@@ -82,9 +86,9 @@ typedef struct cluster_cfg {
 } cluster_cfg_t;
 
 /**
- * Phase 1.1 — call / AGI-arg context (still process-global today).
- * Phase 3 will pass pointers into handlers; compatibility macros in pbx3cagi.c
- * keep existing `callerid` / `myargv` names working unchanged.
+ * Phase 1.1 — call / AGI-arg context (still process-global storage).
+ * Phase 3: command handlers take agi_session_t *; field access uses g_call / g_parms
+ * (name macros removed). Helpers may still use g_call directly.
  */
 typedef struct agi_call_ctx {
     char uniqueid[64];
@@ -112,6 +116,17 @@ typedef struct agi_parms {
     int switchdig;
 } agi_parms_t;
 
+/**
+ * Phase 3 — one session pointer for command handlers (points at process globals today).
+ * Storage remains g_call / g_parms / agi / res so helpers need not all take s yet.
+ */
+typedef struct agi_session {
+    agi_call_ctx_t *call;
+    agi_parms_t *parms;
+    struct _asterisk_tools_ *agi;
+    struct _asterisk_cmd_result_ *res;
+} agi_session_t;
+
 extern agi_call_ctx_t g_call;
 extern agi_parms_t g_parms;
 
@@ -128,34 +143,34 @@ void DebugFunctionTrace(const char* thisFunc);
 void DebugFunctionMsg(const char* thisFunc, const char* thisMsg);
 void setMoh();
 char* Mangle(char* preSel, char* transformList, char* data);
-void RecGreet();
-void OutRoute();
-void OutTrunk(char *key);
+void RecGreet(agi_session_t *s);
+void OutRoute(agi_session_t *s);
+void OutTrunk(agi_session_t *s, char *key);
 void OutVoip(char *key);
 int Authenticate(char* password);
 int GetRecOption();
-void LepDial();
-void PostDial();
+void LepDial(agi_session_t *s);
+void PostDial(agi_session_t *s);
 void PrepDial(char* number, char* type, char* twin, char* vmbox);
 char* SetRecord(char* extension, char* compass);
 char* CFCheck(char* type, char* number);
-void CFToggle();
-void CFVMailSet();
-void CFVMailToggle();
-void FollowMe();
-void CFOff();
-void SetRingDelay();
+void CFToggle(agi_session_t *s);
+void CFVMailSet(agi_session_t *s);
+void CFVMailToggle(agi_session_t *s);
+void FollowMe(agi_session_t *s);
+void CFOff(agi_session_t *s);
+void SetRingDelay(agi_session_t *s);
 char* StripPreselect(char* preSel, char* number);
-void AgentLogin();
-void AgentLogout();
-void AgentPause();
-void AgentUnpause();
-void ChanSpyWhisper();
-void ChanSpy();
-void Ingress();
+void AgentLogin(agi_session_t *s);
+void AgentLogout(agi_session_t *s);
+void AgentPause(agi_session_t *s);
+void AgentUnpause(agi_session_t *s);
+void ChanSpyWhisper(agi_session_t *s);
+void ChanSpy(agi_session_t *s);
+void Ingress(agi_session_t *s);
 void CheckState(char* remotenum);
 char *CheckTime(char *cluster);
-void IVR(char *ivrname);
+void IVR(agi_session_t *s, char *ivrname);
 void IVRAction(char* menu, char* press);
 
 char* DBGet(char* family, char* key);
@@ -164,7 +179,7 @@ void DBDel(char* family, char* key);
 
 void sig_handler(int signum);
 
-void OutQmt();
+void OutQmt(agi_session_t *s);
 void QLogWrite(char* buffer);
 void outboundClip(char *key);
 void consoleMsg(char* vmsg, int level);

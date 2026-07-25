@@ -132,27 +132,23 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 
 - Added `agi_init_call_context(agi_call_ctx_t *ctx, int argc, char **argv)`: AGI identity vars, locality flags, **PARM_CLST → myCluster** (fallback `agi_context`), accountcode, `load_cluster_cfg` / `abstimeint`.
 - `main()` is now: AGITool_Init → DEBUG → init → argc guards → switchdig → setMoh → `agi_cmd_dispatch` → Destroy.
-- No `SetCluster()`. Still uses Phase 1.1 name macros inside init (must pass `&g_call`); Phase 3 drops macros so `ctx->` works.
-- Gate: `make test` PASS. Next: **Phase 3** (pass context / drop macros), or Phase 4 optional splits.
-
----
+- No `SetCluster()`. Init writes `ctx->` (Phase 3 removed name macros).
+- Gate: `make test` PASS.
 
 ### Phase 3: Pass Context Explicitly (reduce globals)
 
-**3.1 Pass a context pointer into handlers**
+**3.1 Pass a context pointer into handlers** — **done 2026-07-25** (API shape + macros gone)
 
-- Define a single “session” or “call” struct that holds:
-  - agi_call_ctx_t (or equivalent),
-  - agi/res (or pointers to AGI tools + result),
-  - rescols (or pointer to DB result buffer),
-  - debug, abstimeout, etc.
-- Change handler signatures to `void OutTrunk(call_ctx_t *ctx, const char *key)` (and similarly for others).
-- In main(), build one `call_ctx_t` and pass `&ctx` to each handler. Replace global reads in each handler with `ctx->...` in small steps.
-- Outcome: no (or minimal) globals for call state; easier to test and to support multiple calls later if needed.
+- Added `agi_session_t` (`call`, `parms`, `agi`, `res` pointers). `main` builds one `sess` pointing at process globals.
+- Command table / dispatch / named command handlers take `agi_session_t *s`.
+- **Name macros removed**; call/argv fields are explicit `g_call.*` / `g_parms.*` (same storage as `s->call` / `s->parms`).
+- `agi_init_call_context` writes through `ctx->` again.
+- Helpers (`PrepDial`, `SetRecord`, `CFCheck`, …) still use `g_call` / global `agi`/`res` directly — next slice can thread `s` and switch bodies to `s->call->` / `s->agi`.
+- Gate: `make test` PASS. Optional next: **3.2** AGI wrapper, or finish threading `s` into helpers / drop `(void)s`.
 
 **3.2 Optional: AGI abstraction**
 
-- Introduce a thin wrapper (e.g. `agi_session_t`) that holds `AGI_TOOLS*` and `AGI_CMD_RESULT*` and exposes “get variable”, “exec”, “set”, etc. Handlers take `call_ctx_t *ctx` and use `ctx->agi` or `ctx->session` for all AGI calls.
+- Introduce a thin wrapper (e.g. `agi_session_t` already holds `agi`/`res`) that exposes “get variable”, “exec”, “set”, etc. Handlers use `s->agi` for all AGI calls.
 - Outcome: one place for AGI interaction; easier to mock in tests or swap implementation.
 
 ---
@@ -178,7 +174,9 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 6. **Phase 2.1** (command table) – **done 2026-07-25** (`agi_cmd_table` + dispatch; `make test` green).
 7. **Phase 2.2** (DB module) – **done 2026-07-25** (`agi_sqlite.c`; `make test` green).
 8. **Phase 2.3** (init_call_context) – **done 2026-07-25** (`agi_init_call_context`; `make test` green).
-9. **Phase 3** — pass context pointer; AGI abstraction aligns with harness mock layer. **Next**.
+9. **Phase 3.1** — **done 2026-07-25** (`agi_session_t` + macros → `g_call`/`g_parms`; `make test` green).
+10. **Phase 3 follow-on** — thread `s` into helpers / use `s->call->`; optional **3.2** AGI wrapper. **Next** (or Phase 4).
+11. **Phase 4** — optional domain splits / named feature-code enums.
 
 ---
 

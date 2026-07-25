@@ -50,32 +50,11 @@ char setcdrcmd[64] = "CHANNEL(accountcode)=";
 long debug = FALSE; // debug on/off
 int abstimeint = 14400; // default (4 hours)
 
-/* Phase 1.1: call + argv state live in structs; macros preserve old names. */
+/* Phase 3: name macros removed — use g_call.* / g_parms.*. */
 agi_call_ctx_t g_call = {
     .myClusterContext = "qrxvtmny",
 };
 agi_parms_t g_parms;
-
-#define uniqueid           (g_call.uniqueid)
-#define callerid           (g_call.callerid)
-#define calleridname       (g_call.calleridname)
-#define channel            (g_call.channel)
-#define chanId             (g_call.chanId)
-#define context            (g_call.context)
-#define agi_dnid           (g_call.agi_dnid)
-#define extension          (g_call.extension)
-#define rdnis              (g_call.rdnis)
-#define myCluster          (g_call.myCluster)
-#define myClusterclid      (g_call.myClusterclid)
-#define myClusterContext   (g_call.myClusterContext)
-#define myClusterId        (g_call.myClusterId)
-#define callee_is_local    (g_call.callee_is_local)
-#define caller_is_local    (g_call.caller_is_local)
-#define rdnis_is_local     (g_call.rdnis_is_local)
-#define rdnis_is_set       (g_call.rdnis_is_set)
-#define myargv             (g_parms.argv)
-#define myargc             (g_parms.argc)
-#define switchdig          (g_parms.switchdig)
 
 void sig_handler(int signum)
 {
@@ -136,8 +115,8 @@ static int pbx3_fleet_mode(void)
 }
 
 
-/* Phase 2.1 — command table (replaces the big switch in main). */
-typedef void (*agi_cmd_fn)(void);
+/* Phase 2.1/3 — command table; handlers take agi_session_t *. */
+typedef void (*agi_cmd_fn)(agi_session_t *s);
 
 typedef struct {
     int case_num;          /* historic switchdig / *NN feature code */
@@ -145,9 +124,9 @@ typedef struct {
     agi_cmd_fn handler;
 } agi_cmd_entry_t;
 
-static void cmd_OutTrunk(void) { OutTrunk(PARM_KEY); }
-static void cmd_Dial(void) { PrepDial(PARM_KEY, PARM_PM1, "", ""); }
-static void cmd_IVR(void) { IVR(PARM_KEY); }
+static void cmd_OutTrunk(agi_session_t *s) { OutTrunk(s, PARM_KEY); }
+static void cmd_Dial(agi_session_t *s) { (void)s; PrepDial(PARM_KEY, PARM_PM1, "", ""); }
+static void cmd_IVR(agi_session_t *s) { IVR(s, PARM_KEY); }
 
 static const agi_cmd_entry_t agi_cmd_table[] = {
     { 1, "OutTrunk", cmd_OutTrunk },
@@ -191,13 +170,13 @@ static int agi_cmd_lookup_name(const char *name)
     return 0;
 }
 
-static void agi_cmd_dispatch(int case_num)
+static void agi_cmd_dispatch(agi_session_t *s, int case_num)
 {
     size_t i;
 
     for (i = 0; i < sizeof(agi_cmd_table) / sizeof(agi_cmd_table[0]); i++) {
         if (agi_cmd_table[i].case_num == case_num) {
-            agi_cmd_table[i].handler();
+            agi_cmd_table[i].handler(s);
             return;
         }
     }
@@ -207,67 +186,61 @@ static void agi_cmd_dispatch(int case_num)
 
 /*
  * Phase 2.3 — AGI env + dialplan argv → call/tenant context.
- * Cluster comes from extensions.conf (PARM_CLST); no SetCluster().
- *
- * While Phase 1.1 name macros are active, field tokens like `uniqueid` expand to
- * `g_call.uniqueid`, so this writes via those macros. Callers must pass &g_call
- * until Phase 3 drops the macros and uses ctx-> directly.
+ * Cluster from extensions.conf (PARM_CLST); writes *ctx (callers pass &g_call).
  */
 void agi_init_call_context(agi_call_ctx_t *ctx, int argc, char **argv)
 {
     const char *log_cmd = "";
     const char *log_clst = "";
 
-    (void)ctx; /* == &g_call via macros today */
-
     g_parms.argv = argv;
     g_parms.argc = argc;
 
-    strlcpy(uniqueid, AGITool_ListGetVal(agi.agi_vars, "agi_uniqueid"), sizeof(uniqueid));
-    strlcpy(callerid, AGITool_ListGetVal(agi.agi_vars, "agi_callerid"), sizeof(callerid));
-    strlcpy(calleridname, AGITool_ListGetVal(agi.agi_vars, "agi_calleridname"), sizeof(calleridname));
-    strlcpy(context, AGITool_ListGetVal(agi.agi_vars, "agi_context"), sizeof(context));
-    strlcpy(extension, AGITool_ListGetVal(agi.agi_vars, "agi_extension"), sizeof(extension));
-    strlcpy(rdnis, AGITool_ListGetVal(agi.agi_vars, "agi_rdnis"), sizeof(rdnis));
-    strlcpy(channel, AGITool_ListGetVal(agi.agi_vars, "agi_channel"), sizeof(channel));
-    strlcpy(agi_dnid, AGITool_ListGetVal(agi.agi_vars, "agi_dnid"), sizeof(agi_dnid));
+    strlcpy(ctx->uniqueid, AGITool_ListGetVal(agi.agi_vars, "agi_uniqueid"), sizeof(ctx->uniqueid));
+    strlcpy(ctx->callerid, AGITool_ListGetVal(agi.agi_vars, "agi_callerid"), sizeof(ctx->callerid));
+    strlcpy(ctx->calleridname, AGITool_ListGetVal(agi.agi_vars, "agi_calleridname"), sizeof(ctx->calleridname));
+    strlcpy(ctx->context, AGITool_ListGetVal(agi.agi_vars, "agi_context"), sizeof(ctx->context));
+    strlcpy(ctx->extension, AGITool_ListGetVal(agi.agi_vars, "agi_extension"), sizeof(ctx->extension));
+    strlcpy(ctx->rdnis, AGITool_ListGetVal(agi.agi_vars, "agi_rdnis"), sizeof(ctx->rdnis));
+    strlcpy(ctx->channel, AGITool_ListGetVal(agi.agi_vars, "agi_channel"), sizeof(ctx->channel));
+    strlcpy(ctx->agi_dnid, AGITool_ListGetVal(agi.agi_vars, "agi_dnid"), sizeof(ctx->agi_dnid));
 
-    if (isdigit((unsigned char)callerid[0])) {
-        if (strlen(callerid) < 6) {
-            caller_is_local = TRUE;
-        } else if (strlen(callerid) == 8) {
-            caller_is_local = TRUE;
+    if (isdigit((unsigned char)ctx->callerid[0])) {
+        if (strlen(ctx->callerid) < 6) {
+            ctx->caller_is_local = TRUE;
+        } else if (strlen(ctx->callerid) == 8) {
+            ctx->caller_is_local = TRUE;
         }
     }
 
-    if (isdigit((unsigned char)extension[0])) {
-        if (strlen(extension) < 6) {
-            callee_is_local = TRUE;
-        } else if (strlen(extension) == 8) {
-            callee_is_local = TRUE;
+    if (isdigit((unsigned char)ctx->extension[0])) {
+        if (strlen(ctx->extension) < 6) {
+            ctx->callee_is_local = TRUE;
+        } else if (strlen(ctx->extension) == 8) {
+            ctx->callee_is_local = TRUE;
         }
     }
 
-    if (strcmp(rdnis, "unknown")) {
-        if (strlen(rdnis) < 6) {
-            rdnis_is_local = TRUE;
+    if (strcmp(ctx->rdnis, "unknown")) {
+        if (strlen(ctx->rdnis) < 6) {
+            ctx->rdnis_is_local = TRUE;
         }
-        rdnis_is_set = TRUE;
+        ctx->rdnis_is_set = TRUE;
     }
 
     /* GenAst passes tenant as AGI argv[3]; fall back to agi_context. */
     if (argc > 3 && argv[3] != NULL && argv[3][0] != '\0') {
-        strlcpy(myCluster, argv[3], sizeof(myCluster));
+        strlcpy(ctx->myCluster, argv[3], sizeof(ctx->myCluster));
     } else {
-        strlcpy(myCluster, context, sizeof(myCluster));
+        strlcpy(ctx->myCluster, ctx->context, sizeof(ctx->myCluster));
     }
 
-    strlcpy(myClusterContext, myCluster, sizeof(myClusterContext));
-    if (!strcmp(myCluster, "default")) {
-        strlcpy(myClusterContext, "qrxvtmny", sizeof(myClusterContext));
+    strlcpy(ctx->myClusterContext, ctx->myCluster, sizeof(ctx->myClusterContext));
+    if (!strcmp(ctx->myCluster, "default")) {
+        strlcpy(ctx->myClusterContext, "qrxvtmny", sizeof(ctx->myClusterContext));
     }
 
-    strlcat(setcdrcmd, myCluster, sizeof(setcdrcmd));
+    strlcat(setcdrcmd, ctx->myCluster, sizeof(setcdrcmd));
     AGITool_exec(&agi, &res, "Set", setcdrcmd);
 
     if (argc > 1 && argv[1] != NULL) {
@@ -278,10 +251,10 @@ void agi_init_call_context(agi_call_ctx_t *ctx, int argc, char **argv)
     }
     snprintf(vmsg, sizeof(vmsg),
              "Phase Main effective_cluster=%s agi_context=%s argv PARM_CMD=%s PARM_CLST=%s",
-             myCluster, context, log_cmd, log_clst);
+             ctx->myCluster, ctx->context, log_cmd, log_clst);
     DebugFunctionMsg(__FUNCTION__, vmsg);
 
-    load_cluster_cfg(myCluster, &g_cluster_cfg);
+    load_cluster_cfg(ctx->myCluster, &g_cluster_cfg);
     abstimeint = g_cluster_cfg.abstimeout_sec;
 }
 
@@ -289,6 +262,7 @@ int main(int argc, char **argv)
 {
     char numwork[32] = {'\0'};
     char chardig[4] = {'\0'};
+    agi_session_t sess;
 
     AGITool_Init(&agi);
 
@@ -300,6 +274,11 @@ int main(int argc, char **argv)
     DebugFunctionTrace(__FUNCTION__);
 
     agi_init_call_context(&g_call, argc, argv);
+
+    sess.call = &g_call;
+    sess.parms = &g_parms;
+    sess.agi = &agi;
+    sess.res = &res;
 
     /* No parameters: Queues "Local" backcall */
     if (argc == 1) {
@@ -317,42 +296,42 @@ int main(int argc, char **argv)
         AGITool_exec(&agi, &res, "Wait", "0.5");
         strlcpy(numwork, argv[1], sizeof(numwork));
         strlcpy(chardig, numwork + 1, sizeof(chardig));
-        switchdig = atoi(chardig);
+        g_parms.switchdig = atoi(chardig);
     } else {
-        switchdig = agi_cmd_lookup_name(argv[1]);
+        g_parms.switchdig = agi_cmd_lookup_name(argv[1]);
     }
 
     if (debug) {
-        snprintf(vmsg, sizeof(vmsg), "switchdig is %i", switchdig);
+        snprintf(vmsg, sizeof(vmsg), "switchdig is %i", g_parms.switchdig);
         DebugFunctionMsg(__FUNCTION__, vmsg);
         snprintf(vmsg, sizeof(vmsg), "PARM_CMD is %s", PARM_CMD);
         DebugFunctionMsg(__FUNCTION__, vmsg);
-        if (argc > 2 && myargv[2] != NULL) {
+        if (argc > 2 && g_parms.argv[2] != NULL) {
             snprintf(vmsg, sizeof(vmsg), "PARM_KEY is %s", PARM_KEY);
             DebugFunctionMsg(__FUNCTION__, vmsg);
         }
-        if (argc > 3 && myargv[3] != NULL) {
+        if (argc > 3 && g_parms.argv[3] != NULL) {
             snprintf(vmsg, sizeof(vmsg), "PARM_CLST is %s", PARM_CLST);
             DebugFunctionMsg(__FUNCTION__, vmsg);
         }
-        if (argc > 4 && myargv[4] != NULL) {
+        if (argc > 4 && g_parms.argv[4] != NULL) {
             snprintf(vmsg, sizeof(vmsg), "PARM_PM1 is %s", PARM_PM1);
             DebugFunctionMsg(__FUNCTION__, vmsg);
         }
-        if (argc > 5 && myargv[5] != NULL) {
+        if (argc > 5 && g_parms.argv[5] != NULL) {
             snprintf(vmsg, sizeof(vmsg), "PARM_PM2 is %s", PARM_PM2);
             DebugFunctionMsg(__FUNCTION__, vmsg);
         }
-        if (argc > 6 && myargv[6] != NULL) {
+        if (argc > 6 && g_parms.argv[6] != NULL) {
             snprintf(vmsg, sizeof(vmsg), "PARM_PM3 is %s", PARM_PM3);
             DebugFunctionMsg(__FUNCTION__, vmsg);
         }
-        snprintf(vmsg, sizeof(vmsg), "Cluster is %s", myCluster);
+        snprintf(vmsg, sizeof(vmsg), "Cluster is %s", g_call.myCluster);
         DebugFunctionMsg(__FUNCTION__, vmsg);
     }
 
     setMoh();
-    agi_cmd_dispatch(switchdig);
+    agi_cmd_dispatch(&sess, g_parms.switchdig);
     AGITool_Destroy(&agi);
     return 0;
 }
@@ -371,7 +350,7 @@ void setMoh()
     char cmd[1024];
     int status, exitcode;
 
-    strlcat(mohfolder, myCluster, sizeof(mohfolder));
+    strlcat(mohfolder, g_call.myCluster, sizeof(mohfolder));
 
     if (strcmp(g_cluster_cfg.usemohcustom, "YES"))
     {
@@ -399,7 +378,7 @@ void setMoh()
     snprintf(vmsg, sizeof(vmsg), "Setting MOH folder %s as music class", mohfolder);
     DebugFunctionTrace(__FUNCTION__);
 
-    strlcat(setmohcmd, myCluster, sizeof(setmohcmd));
+    strlcat(setmohcmd, g_call.myCluster, sizeof(setmohcmd));
     AGITool_exec(&agi, &res, "Set", setmohcmd);
     return;
 }
@@ -440,11 +419,11 @@ char *Mangle(char *preSel, char *transformList, char *data)
 
     if (!strcmp(data, "CLI"))
     {
-        strlcpy(operand, callerid, sizeof(operand));
+        strlcpy(operand, g_call.callerid, sizeof(operand));
     }
     else
     {
-        strlcpy(operand, extension, sizeof(operand));
+        strlcpy(operand, g_call.extension, sizeof(operand));
     }
     if (preSel)
     {
@@ -493,8 +472,9 @@ char *Mangle(char *preSel, char *transformList, char *data)
     return pOperand;
 }
 
-void RecGreet()
+void RecGreet(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -506,10 +486,10 @@ void RecGreet()
     srand((unsigned int)time(NULL));
     int r = rand();
 
-    snprintf(tmpGreetFile, sizeof(tmpGreetFile), "%s%s/ug%i", SOUNDIR, myCluster, r);
+    snprintf(tmpGreetFile, sizeof(tmpGreetFile), "%s%s/ug%i", SOUNDIR, g_call.myCluster, r);
 
     strlcpy(ext, GetExt(PARM_CMD), sizeof(ext));
-    snprintf(newGreetFile, sizeof(newGreetFile), "%s%s/usergreeting%s.wav", SOUNDIR, myCluster, ext);
+    snprintf(newGreetFile, sizeof(newGreetFile), "%s%s/usergreeting%s.wav", SOUNDIR, g_call.myCluster, ext);
 
     // check password
     if (Authenticate("SYSPASS") != 0) //** syspass is held in the tenant table (used to be in Globals)
@@ -627,8 +607,9 @@ int GetRecOption()
     return '3';
 }
 
-void AgentLogin()
+void AgentLogin(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -652,16 +633,16 @@ void AgentLogin()
 
     int timediff;
 
-    snprintf(f_eAgent, sizeof(f_eAgent), "%s/eAgent", myClusterContext);
-    snprintf(f_dAgent, sizeof(f_dAgent), "%s/dAgent", myClusterContext);
-    snprintf(f_dynLogin, sizeof(f_dynLogin), "%s/DYNLOGIN", myClusterContext);
+    snprintf(f_eAgent, sizeof(f_eAgent), "%s/eAgent", g_call.myClusterContext);
+    snprintf(f_dAgent, sizeof(f_dAgent), "%s/dAgent", g_call.myClusterContext);
+    snprintf(f_dynLogin, sizeof(f_dynLogin), "%s/DYNLOGIN", g_call.myClusterContext);
 
     strlcpy(agentchan, "Local/", sizeof(agentchan));
-    strlcat(agentchan, callerid, sizeof(agentchan));
+    strlcat(agentchan, g_call.callerid, sizeof(agentchan));
     strlcat(agentchan, "@", sizeof(agentchan));
-    strlcat(agentchan, myClusterContext, sizeof(agentchan));
+    strlcat(agentchan, g_call.myClusterContext, sizeof(agentchan));
     strlcpy(statechan, "Local/", sizeof(statechan));
-    strlcat(statechan, callerid, sizeof(statechan));
+    strlcat(statechan, g_call.callerid, sizeof(statechan));
 
     AGITool_get_data(&agi, &res, "agent-user", 7000, 5);
 
@@ -677,7 +658,7 @@ void AgentLogin()
                 AGITool_exec(&agi, &res, "Authenticate", agentpasswd);
                 if (atoi(res.result) == 0)
                 {
-                    strlcpy(oldagent, DBGet(f_eAgent, callerid), sizeof(oldagent));
+                    strlcpy(oldagent, DBGet(f_eAgent, g_call.callerid), sizeof(oldagent));
                     strlcpy(extenAgent, DBGet(f_dAgent, agent), sizeof(extenAgent));
                     if (!strcmp(oldagent, ""))
                     {
@@ -705,7 +686,7 @@ void AgentLogin()
                         {
                             timediff = atoi(epoch) - atoi(startepoch);
                         }
-                        snprintf(buffer, sizeof(buffer), "%s|%s|NONE|Agent/%s|AGENTLOGOFF|-|%i", epoch, uniqueid, oldagent, timediff);
+                        snprintf(buffer, sizeof(buffer), "%s|%s|NONE|Agent/%s|AGENTLOGOFF|-|%i", epoch, g_call.uniqueid, oldagent, timediff);
                         QLogWrite(buffer);
                         DBDel(f_dynLogin, oldagent);
                         DBDel(f_dAgent, oldagent);
@@ -726,14 +707,14 @@ void AgentLogin()
                     }
                     AGITool_get_variable(&agi, &res, "EPOCH"); //Asterisk system variable EPOCH
                     strlcpy(epoch, res.data, sizeof(epoch));
-                    snprintf(buffer, sizeof(buffer), "%s|%s|NONE|Agent/%s|AGENTLOGIN|%s", epoch, uniqueid, agent, agentchan);
+                    snprintf(buffer, sizeof(buffer), "%s|%s|NONE|Agent/%s|AGENTLOGIN|%s", epoch, g_call.uniqueid, agent, agentchan);
                     QLogWrite(buffer);
                     if (!strcmp(DBGet("DYNLOGIN", agent), ""))
                     {
                         DBPut(f_dynLogin, agent, epoch);
                     }
-                    DBPut(f_dAgent, agent, callerid);
-                    DBPut(f_eAgent, callerid, agent);
+                    DBPut(f_dAgent, agent, g_call.callerid);
+                    DBPut(f_eAgent, g_call.callerid, agent);
                     AGITool_exec(&agi, &res, "Playback", "agent-loginok");
                     finished = TRUE;
                     continue;
@@ -743,8 +724,9 @@ void AgentLogin()
         AGITool_get_data(&agi, &res, "agent-incorrect", 7000, 5);
     }
 }
-void AgentLogout()
+void AgentLogout(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -764,18 +746,18 @@ void AgentLogout()
     char f_dynLogin[64] = {'\0'};
     int timediff;
 
-    snprintf(f_eAgent, sizeof(f_eAgent), "%s/eAgent", myClusterContext);
-    snprintf(f_dAgent, sizeof(f_dAgent), "%s/dAgent", myClusterContext);
-    snprintf(f_dynLogin, sizeof(f_dynLogin), "%s/DYNLOGIN", myClusterContext);
+    snprintf(f_eAgent, sizeof(f_eAgent), "%s/eAgent", g_call.myClusterContext);
+    snprintf(f_dAgent, sizeof(f_dAgent), "%s/dAgent", g_call.myClusterContext);
+    snprintf(f_dynLogin, sizeof(f_dynLogin), "%s/DYNLOGIN", g_call.myClusterContext);
 
     strlcpy(agentchan, "Local/", sizeof(agentchan));
-    strlcat(agentchan, callerid, sizeof(agentchan));
+    strlcat(agentchan, g_call.callerid, sizeof(agentchan));
     strlcat(agentchan, "@", sizeof(agentchan));
-    strlcat(agentchan, myClusterContext, sizeof(agentchan));
+    strlcat(agentchan, g_call.myClusterContext, sizeof(agentchan));
     strlcpy(statechan, "Local/", sizeof(statechan));
-    strlcat(statechan, callerid, sizeof(statechan));
+    strlcat(statechan, g_call.callerid, sizeof(statechan));
 
-    strcpy(agent, DBGet(f_eAgent, callerid));
+    strcpy(agent, DBGet(f_eAgent, g_call.callerid));
     strlcpy(agentpasswd, sqlQueryBind1("SELECT passwd FROM agent WHERE pkey=?", agent), sizeof(agentpasswd));
 
     // check if they are logged in - if not just exit
@@ -806,17 +788,18 @@ void AgentLogout()
     {
         timediff = atoi(epoch) - atoi(startepoch);
     }
-    snprintf(buffer, sizeof(buffer), "%s|%s|NONE|Agent/%s|AGENTLOGOFF|-|%i", epoch, uniqueid, agent, timediff);
+    snprintf(buffer, sizeof(buffer), "%s|%s|NONE|Agent/%s|AGENTLOGOFF|-|%i", epoch, g_call.uniqueid, agent, timediff);
     QLogWrite(buffer);
     DBDel(f_dynLogin, agent);
     DBDel(f_dAgent, agent);
-    DBDel(f_eAgent, callerid);
+    DBDel(f_eAgent, g_call.callerid);
     AGITool_exec(&agi, &res, "Playback", "agent-loggedoff");
     //	}
 }
 
-void AgentPause()
+void AgentPause(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -824,19 +807,20 @@ void AgentPause()
     char queuearg[256] = {'\0'}; // argument
     char f_eAgent[64] = {'\0'};
 
-    snprintf(f_eAgent, sizeof(f_eAgent), "%s/eAgent", myClusterContext);
-    strlcpy(agent, DBGet(f_eAgent, callerid), sizeof(agent));
+    snprintf(f_eAgent, sizeof(f_eAgent), "%s/eAgent", g_call.myClusterContext);
+    strlcpy(agent, DBGet(f_eAgent, g_call.callerid), sizeof(agent));
 
     if (strcmp(agent, ""))
     {
-        snprintf(queuearg, sizeof(queuearg), ",Local/%s@%s", callerid, myClusterContext);
+        snprintf(queuearg, sizeof(queuearg), ",Local/%s@%s", g_call.callerid, g_call.myClusterContext);
         AGITool_exec(&agi, &res, "PauseQueueMember", queuearg);
     }
     AGITool_exec(&agi, &res, "Playback", "beep");
 }
 
-void AgentUnpause()
+void AgentUnpause(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -844,20 +828,21 @@ void AgentUnpause()
     char queuearg[256] = {'\0'}; // argument
     char f_eAgent[64] = {'\0'};
 
-    snprintf(f_eAgent, sizeof(f_eAgent), "%s/eAgent", myClusterContext);
-    strlcpy(agent, DBGet(f_eAgent, callerid), sizeof(agent));
+    snprintf(f_eAgent, sizeof(f_eAgent), "%s/eAgent", g_call.myClusterContext);
+    strlcpy(agent, DBGet(f_eAgent, g_call.callerid), sizeof(agent));
 
     if (strcmp(agent, ""))
     {
-        snprintf(queuearg, sizeof(queuearg), ",Local/%s@%s", callerid, myClusterContext);
+        snprintf(queuearg, sizeof(queuearg), ",Local/%s@%s", g_call.callerid, g_call.myClusterContext);
         AGITool_exec(&agi, &res, "UnPauseQueueMember", queuearg);
     }
     AGITool_exec(&agi, &res, "Playback", "beep");
 }
 
 //ToDo needs to become extenSpy
-void ChanSpyWhisper()
+void ChanSpyWhisper(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -876,8 +861,9 @@ void ChanSpyWhisper()
 }
 
 //ToDo needs to become extenSpy
-void ChanSpy()
+void ChanSpy(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -897,8 +883,9 @@ void ChanSpy()
 }
 
 
-void OutRoute()
+void OutRoute(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -916,7 +903,7 @@ void OutRoute()
     int i;
     int last;
 
-    strlcpy(myClusterclid, g_cluster_cfg.clusterclid, sizeof(myClusterclid));
+    strlcpy(g_call.myClusterclid, g_cluster_cfg.clusterclid, sizeof(g_call.myClusterclid));
 
     /* cluster.dynamicfeatures is the Asterisk DYNAMIC_FEATURES string (replaces SET_DYNAMIC_FEATURES dialplan global). */
     if (g_cluster_cfg.dynamicfeatures[0] != '\0')
@@ -942,9 +929,9 @@ void OutRoute()
      * ...and check if the exten is barred (extenAbstimeout=0)
      *
      */
-    if (caller_is_local)
+    if (g_call.caller_is_local)
     {
-        sqlQueryBind2("SELECT abstimeout FROM ipphone WHERE shortuid=? AND cluster=?", extension, myCluster);
+        sqlQueryBind2("SELECT abstimeout FROM ipphone WHERE shortuid=? AND cluster=?", g_call.extension, g_call.myCluster);
         strlcpy(extenAbstimeout, rescols[0], sizeof(extenAbstimeout));
         if (strcmp(extenAbstimeout, ""))
         {
@@ -968,9 +955,9 @@ void OutRoute()
      */
     if (g_cluster_cfg.chanmax_str[0] != '\0')
     {
-        snprintf(clusterGroup, sizeof(clusterGroup), "GROUP(%s)", myCluster);
-        AGITool_set_variable(&agi, &res, clusterGroup, myCluster);
-        snprintf(clusterCount, sizeof(clusterCount), "GROUP_COUNT(%s)", myCluster);
+        snprintf(clusterGroup, sizeof(clusterGroup), "GROUP(%s)", g_call.myCluster);
+        AGITool_set_variable(&agi, &res, clusterGroup, g_call.myCluster);
+        snprintf(clusterCount, sizeof(clusterCount), "GROUP_COUNT(%s)", g_call.myCluster);
         AGITool_get_variable(&agi, &res, clusterCount); // clusterCount is the number of active outbound calls
         if (atoi(res.data) > atoi(g_cluster_cfg.chanmax_str))
         {
@@ -1091,11 +1078,11 @@ void OutRoute()
         }
     }   
 
-    if (strcmp(alternate, "") && strcmp(alternate, extension))
+    if (strcmp(alternate, "") && strcmp(alternate, g_call.extension))
     {
         AGITool_set_priority(&agi, &res, 1);
         AGITool_set_extension(&agi, &res, alternate);
-        AGITool_set_context(&agi, &res, myClusterContext);
+        AGITool_set_context(&agi, &res, g_call.myClusterContext);
         return;
     }
 
@@ -1113,8 +1100,9 @@ void OutRoute()
 }
 
 
-void OutTrunk(char *key)
+void OutTrunk(agi_session_t *s, char *key)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -1199,7 +1187,7 @@ void OutVoip(char *key)
     }
     else
     {
-        strcpy(number, extension);
+        strcpy(number, g_call.extension);
         if (strcmp(preSel, ""))
         {
             strlcpy(number, StripPreselect(preSel, number), sizeof(number));
@@ -1239,7 +1227,7 @@ void OutVoip(char *key)
         strlcat(dialString, "r", sizeof(dialString));
     }
     /* Call-forward to external: optional early media + answer before Dial (tenant cluster cfg). */
-    if (rdnis_is_set)
+    if (g_call.rdnis_is_set)
     {
         if (!strcmp(g_cluster_cfg.cfwd_progress, "enabled"))
         {
@@ -1255,7 +1243,7 @@ void OutVoip(char *key)
     AGITool_get_variable(&agi, &res, "GROUP_COUNT()"); // GROUP_COUNT() is the number of active outbound calls
     if (atoi(res.data) <= atoi(g_cluster_cfg.voipmax_str))
     {
-        strlcpy(recRet, SetRecord(callerid, "Outbound"), sizeof(recRet));
+        strlcpy(recRet, SetRecord(g_call.callerid, "Outbound"), sizeof(recRet));
         strlcat(dialString, recRet, sizeof(dialString));
         //  Abs timeout
         AGITool_exec(&agi, &res, "Set", abstimeout);
@@ -1266,8 +1254,9 @@ void OutVoip(char *key)
     }
 }
 
-void LepDial()
+void LepDial(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -1287,7 +1276,7 @@ void LepDial()
     AGITool_get_variable(&agi, &res, "BLINDTRANSFER");  //set in extensions.conf
     strlcpy(blindtransfer, res.data, sizeof(blindtransfer));
 
-    sqlQueryBind2("SELECT dvrvmail,extalert,cluster FROM ipphone WHERE shortuid=? AND cluster=?", extension, myCluster);
+    sqlQueryBind2("SELECT dvrvmail,extalert,cluster FROM ipphone WHERE shortuid=? AND cluster=?", g_call.extension, g_call.myCluster);
 
     strlcpy(vmbox, rescols[0], sizeof(vmbox));
     strlcpy(extalert, rescols[1], sizeof(extalert));
@@ -1309,13 +1298,13 @@ void LepDial()
             strcat(vmflags, "u");
         }
     */
-    if (!strcmp(DBGet("cfim", extension), extension))
+    if (!strcmp(DBGet("cfim", g_call.extension), g_call.extension))
     {
         if (!strcmp(vmbox, "None"))
         {
             if (strcmp(blindtransfer, ""))
             {
-                if (strcmp(agi_dnid, extension))
+                if (strcmp(g_call.agi_dnid, g_call.extension))
                 {
                     AGITool_exec(&agi, &res, "Playback", "silence/1");
                     if (!strcmp(g_cluster_cfg.playtransfer, "YES"))
@@ -1325,7 +1314,7 @@ void LepDial()
                     strlcpy(transferer, pBtr, sizeof(transferer));
                     AGITool_set_priority(&agi, &res, 1);
                     AGITool_set_extension(&agi, &res, transferer);
-                    AGITool_set_context(&agi, &res, myClusterContext);
+                    AGITool_set_context(&agi, &res, g_call.myClusterContext);
                     return;
                 }
             }
@@ -1347,11 +1336,11 @@ void LepDial()
     /*
      *  check and send PBX forwards
      */
-    if (!CFCheck("cfim", extension))
+    if (!CFCheck("cfim", g_call.extension))
     {
         if (debug)
         {
-            snprintf(vmsg, sizeof(vmsg), "Trace left CFCheck with extension=%s",extension); 
+            snprintf(vmsg, sizeof(vmsg), "Trace left CFCheck with extension=%s",g_call.extension); 
             DebugFunctionMsg(__FUNCTION__, vmsg);
         }
 
@@ -1369,21 +1358,21 @@ void LepDial()
  /**
   *  set a pickup mark for directed call pickup
   */
-    AGITool_set_variable(&agi, &res, "__PICKUPMARK", extension);
+    AGITool_set_variable(&agi, &res, "__PICKUPMARK", g_call.extension);
 
 /**
   *  Add a twin if we have one enabled
   */
-    strlcpy(cellphone, DBGet("srktwin", extension), sizeof(cellphone));
+    strlcpy(cellphone, DBGet("srktwin", g_call.extension), sizeof(cellphone));
     if (strcmp(cellphone, ""))
     {
         strlcpy(celltwindial, "&Local/", sizeof(celltwindial));
         strlcat(celltwindial, cellphone, sizeof(celltwindial));
         strlcat(celltwindial, "@", sizeof(celltwindial));
-        strlcat(celltwindial, myClusterContext, sizeof(celltwindial));
+        strlcat(celltwindial, g_call.myClusterContext, sizeof(celltwindial));
     }
     /* Phase G: PrepDial sets PBX3_DIAL and returns — dialplan Dial owns the bridge. */
-    PrepDial(extension, "", celltwindial, vmbox);
+    PrepDial(g_call.extension, "", celltwindial, vmbox);
     return;
 }
 
@@ -1392,8 +1381,9 @@ void LepDial()
  *  Former LepDial post-bridge policy. Dialplan skips this AGI on ANSWER/CANCEL
  *  (dead-AGI cold-start avoidance); still no-op those statuses defensively.
  */
-void PostDial()
+void PostDial(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -1407,19 +1397,19 @@ void PostDial()
     char calledCluster[MAX_CLUSTER_LEN] = {'\0'};
     char dialed[MAX_EXT_LEN] = {'\0'};
 
-    if (myargc > 2 && myargv[2] != NULL && PARM_KEY[0] != '\0')
+    if (g_parms.argc > 2 && g_parms.argv[2] != NULL && PARM_KEY[0] != '\0')
     {
         strlcpy(dialed, PARM_KEY, sizeof(dialed));
     }
     else
     {
-        strlcpy(dialed, extension, sizeof(dialed));
+        strlcpy(dialed, g_call.extension, sizeof(dialed));
     }
 
     AGITool_get_variable(&agi, &res, "BLINDTRANSFER");
     strlcpy(blindtransfer, res.data, sizeof(blindtransfer));
 
-    sqlQueryBind2("SELECT dvrvmail,cluster FROM ipphone WHERE shortuid=? AND cluster=?", dialed, myCluster);
+    sqlQueryBind2("SELECT dvrvmail,cluster FROM ipphone WHERE shortuid=? AND cluster=?", dialed, g_call.myCluster);
     strlcpy(vmbox, rescols[0], sizeof(vmbox));
     strlcpy(calledCluster, rescols[1], sizeof(calledCluster));
 
@@ -1453,20 +1443,20 @@ void PostDial()
         {
             if (strcmp(blindtransfer, ""))
             {
-                if (strcmp(agi_dnid, dialed))
+                if (strcmp(g_call.agi_dnid, dialed))
                 {
                     if (g_cluster_cfg.bounce_alert[0] != '\0')
                     {
                         AGITool_exec(&agi, &res, "SIPAddHeader", g_cluster_cfg.bounce_alert);
                     }
-                    strlcpy(calleridsave, callerid, sizeof(calleridsave));
-                    strlcpy(callerid, "R", sizeof(callerid));
-                    strlcat(callerid, calleridsave, sizeof(callerid));
-                    AGITool_set_callerid(&agi, &res, callerid);
+                    strlcpy(calleridsave, g_call.callerid, sizeof(calleridsave));
+                    strlcpy(g_call.callerid, "R", sizeof(g_call.callerid));
+                    strlcat(g_call.callerid, calleridsave, sizeof(g_call.callerid));
+                    AGITool_set_callerid(&agi, &res, g_call.callerid);
                     strlcpy(transferer, pBtr, sizeof(transferer));
                     AGITool_set_priority(&agi, &res, 1);
                     AGITool_set_extension(&agi, &res, transferer);
-                    AGITool_set_context(&agi, &res, myClusterContext);
+                    AGITool_set_context(&agi, &res, g_call.myClusterContext);
                     return;
                 }
             }
@@ -1482,7 +1472,7 @@ void PostDial()
     {
         if (strcmp(blindtransfer, ""))
         {
-            if (strcmp(agi_dnid, dialed))
+            if (strcmp(g_call.agi_dnid, dialed))
             {
                 AGITool_exec(&agi, &res, "Playback", "silence/1");
                 if (!strcmp(g_cluster_cfg.playtransfer, "YES"))
@@ -1497,7 +1487,7 @@ void PostDial()
                 strlcpy(transferer, pBtr, sizeof(transferer));
                 AGITool_set_priority(&agi, &res, 1);
                 AGITool_set_extension(&agi, &res, transferer);
-                AGITool_set_context(&agi, &res, myClusterContext);
+                AGITool_set_context(&agi, &res, g_call.myClusterContext);
                 return;
             }
             else
@@ -1506,7 +1496,7 @@ void PostDial()
                 {
                     AGITool_set_priority(&agi, &res, 1);
                     AGITool_set_extension(&agi, &res, g_cluster_cfg.blind_busy);
-                    AGITool_set_context(&agi, &res, myClusterContext);
+                    AGITool_set_context(&agi, &res, g_call.myClusterContext);
                     return;
                 }
                 else
@@ -1550,7 +1540,7 @@ void PrepDial(char *number, char *type, char *twin, char *vmbox)
 /**
  *  set the dialled number (DNID) in the CDR user field
  */
-    strlcat(setcdrcmduser, agi_dnid, sizeof(setcdrcmduser));
+    strlcat(setcdrcmduser, g_call.agi_dnid, sizeof(setcdrcmduser));
     AGITool_exec(&agi, &res, "Set", setcdrcmduser);
 
 /**
@@ -1611,7 +1601,7 @@ void PrepDial(char *number, char *type, char *twin, char *vmbox)
 /**
  *       Don't allow external callers to drive a # transfer
  */       
-        if (caller_is_local)
+        if (g_call.caller_is_local)
         {
             strlcat(dialString, "ktT", sizeof(dialString));
         }
@@ -1720,7 +1710,7 @@ char *SetRecord(char *key, char *compass)
  *  add the queuename and agent (if any)
  */
         strcpy(filename, key);
-        sqlQueryBind2("SELECT devicerec FROM Queue WHERE pkey=? AND cluster=?", agi_dnid, myCluster);
+        sqlQueryBind2("SELECT devicerec FROM Queue WHERE pkey=? AND cluster=?", g_call.agi_dnid, g_call.myCluster);
         strlcpy(devicerec, rescols[0], sizeof(devicerec));        
     }
 
@@ -1778,13 +1768,13 @@ char *SetRecord(char *key, char *compass)
 
     if (record)
     {
-        snprintf(filework, sizeof(filework), "%d-%s-%s-%s", (int)time(&now), myCluster, agi_dnid, callerid);
+        snprintf(filework, sizeof(filework), "%d-%s-%s-%s", (int)time(&now), g_call.myCluster, g_call.agi_dnid, g_call.callerid);
         strlcat(filename, filework, sizeof(filename));
 
         /**
          * FILE refs MUST BE CHANGED *DONE*
          */
-        snprintf(soundFile, sizeof(soundFile), " /var/spool/asterisk/monitor/%s/%s.wav", myCluster, filename);
+        snprintf(soundFile, sizeof(soundFile), " /var/spool/asterisk/monitor/%s/%s.wav", g_call.myCluster, filename);
         AGITool_exec(&agi, &res, "MixMonitor", soundFile);
 
     }
@@ -1831,12 +1821,12 @@ char *CFCheck(char *type, char *number)
     {
         strlcpy(cfnum, DBGet(type, number), sizeof(cfnum));
 /* Is this DND? */
-        if (!strcmp(cfnum,agi_dnid)) 
+        if (!strcmp(cfnum,g_call.agi_dnid)) 
         {
 /**
  *  then go to voicemail
  */
-            sprintf(vmbox,"%s@%s%s",agi_dnid,myCluster,vmflags);
+            sprintf(vmbox,"%s@%s%s",g_call.agi_dnid,g_call.myCluster,vmflags);
             AGITool_exec(&agi,&res,"Voicemail",vmbox);
 			return NULL;
         }
@@ -1865,9 +1855,9 @@ char *CFCheck(char *type, char *number)
 /**
  *  Set the rdnis to the original CLI 
  */
-    if (strcmp(rdnis,"unknown"))
+    if (strcmp(g_call.rdnis,"unknown"))
     {
-        strcat(rdnis_string, callerid);
+        strcat(rdnis_string, g_call.callerid);
         AGITool_exec(&agi, &res, "Set", rdnis_string);
     }
 /**
@@ -1875,7 +1865,7 @@ char *CFCheck(char *type, char *number)
  */
         AGITool_set_priority(&agi, &res, 1);
         AGITool_set_extension(&agi, &res, cfnum);
-        AGITool_set_context(&agi, &res, myClusterContext);
+        AGITool_set_context(&agi, &res, g_call.myClusterContext);
         return NULL;
     }
     return number;
@@ -1885,8 +1875,9 @@ char *CFCheck(char *type, char *number)
  *  e.g. *21*1104 - sets a CFIM or CFBS to extension 1104
  *       *21* cancels any forwards
 */
-void CFToggle()
+void CFToggle(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -1897,7 +1888,7 @@ void CFToggle()
 /**
  *  Get the SIP endpoint ID from the channel variable
 */
-    technology = strtok(channel,"/");
+    technology = strtok(g_call.channel,"/");
     sipId = strtok(NULL,"-");
 
     strlcpy(toNum, GetExt(PARM_CMD), sizeof(toNum));
@@ -1915,8 +1906,9 @@ void CFToggle()
     }
 }
 
-void CFVMailSet()
+void CFVMailSet(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -1924,12 +1916,12 @@ void CFVMailSet()
     char *technology;
     char *sipId;
 
-    strlcat(fromNum, callerid, sizeof(fromNum));
+    strlcat(fromNum, g_call.callerid, sizeof(fromNum));
 
 /**
  *  Get the SIP endpoint ID from the channel variable
 */
-    technology = strtok(channel,"/");
+    technology = strtok(g_call.channel,"/");
     sipId = strtok(NULL,"-");
 
     // if the action is ON then activate otherwise de-activate
@@ -1949,8 +1941,9 @@ void CFVMailSet()
     }
 }
 
-void CFVMailToggle()
+void CFVMailToggle(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -1959,11 +1952,11 @@ void CFVMailToggle()
     char *technology;           // Change name - CONFUSING !!!!!!!!!!!
     char *sipId;
 
-    strlcat(fromNum, callerid, sizeof(fromNum));
+    strlcat(fromNum, g_call.callerid, sizeof(fromNum));
 /**
  *  Get the SIP endpoint ID from the channel variable
 */
-    technology = strtok(channel,"/");
+    technology = strtok(g_call.channel,"/");
     sipId = strtok(NULL,"-");
 
     // if the property is empty in the DB then activate otherwise de-activate
@@ -1980,8 +1973,9 @@ void CFVMailToggle()
     }
 }
 
-void FollowMe()
+void FollowMe(agi_session_t *s)
 {
+    (void)s;
 /**
  * NEEDS TO BE REWRITTEN - not sure we care
 */
@@ -2003,8 +1997,9 @@ void FollowMe()
 */
 }
 
-void CFOff()
+void CFOff(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -2013,7 +2008,7 @@ void CFOff()
 /**
  *  Get the SIP endpoint ID from the channel variable
 */
-    technology = strtok(channel,"/");
+    technology = strtok(g_call.channel,"/");
     sipId = strtok(NULL,"-");
 
     DBPut("cfim", sipId, "");
@@ -2022,8 +2017,9 @@ void CFOff()
     AGITool_exec(&agi, &res, "Playback", "de-activated");
 }
 
-void SetRingDelay()
+void SetRingDelay(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -2034,11 +2030,11 @@ void SetRingDelay()
     char *sipId;
     
 
-    strlcpy(fromNum, callerid, sizeof(fromNum));
+    strlcpy(fromNum, g_call.callerid, sizeof(fromNum));
 /**
  *  Get the SIP endpoint ID from the channel variable
 */
-    technology = strtok(channel,"/");
+    technology = strtok(g_call.channel,"/");
     sipId = strtok(NULL,"-");
 
     strncpy(ringDelay,PARM_CMD + 4,sizeof(ringDelay));
@@ -2066,8 +2062,9 @@ char *StripPreselect(char *preSel, char *number)
     return number;
 }
 
-void Ingress()
+void Ingress(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -2127,26 +2124,26 @@ void Ingress()
         {
             strlcpy(prefix, "0", sizeof(prefix));
         }
-        strlcat(prefix, callerid, sizeof(prefix));
-        strlcpy(callerid, prefix, sizeof(callerid));
-        snprintf(clidstrng, sizeof(clidstrng), "CALLERID(number)=%s", callerid);
+        strlcat(prefix, g_call.callerid, sizeof(prefix));
+        strlcpy(g_call.callerid, prefix, sizeof(g_call.callerid));
+        snprintf(clidstrng, sizeof(clidstrng), "CALLERID(number)=%s", g_call.callerid);
         AGITool_exec(&agi, &res, "Set", clidstrng);
     }
 
     //...check CLIP routing and recurse if set
     //... This needs to change to a cluster-centric treatment ////////////////////////////////////////////////
 
-    if (strcmp(swoclip, "NO") && strcmp(callerid, ""))
+    if (strcmp(swoclip, "NO") && strcmp(g_call.callerid, ""))
     {
         if (!strcmp(technology, "PTT_CLID") || !strcmp(technology, "CLID"))
         {
-            if (strcmp(callerid, PARM_KEY))
+            if (strcmp(g_call.callerid, PARM_KEY))
             {
-                strlcpy(clicluster, sqlQueryBind1("SELECT cluster FROM inroutes WHERE pkey=?", callerid), sizeof(clicluster));
-                if (!strcmp(myCluster, clicluster))
+                strlcpy(clicluster, sqlQueryBind1("SELECT cluster FROM inroutes WHERE pkey=?", g_call.callerid), sizeof(clicluster));
+                if (!strcmp(g_call.myCluster, clicluster))
                 {
                     AGITool_set_priority(&agi, &res, 1);
-                    AGITool_set_extension(&agi, &res, callerid);
+                    AGITool_set_extension(&agi, &res, g_call.callerid);
                     AGITool_set_context(&agi, &res, "mainmenu");
                     return;
                 }
@@ -2157,18 +2154,18 @@ void Ingress()
     // regular CLIP
     if (strcmp(tag, ""))
     {
-        strlcpy(calleridname, tag, sizeof(calleridname));
+        strlcpy(g_call.calleridname, tag, sizeof(g_call.calleridname));
         AGITool_exec(&agi, &res, "SetCallerPres", "allowed");
     }
-    if (!strcmp(calleridname, "unknown"))
+    if (!strcmp(g_call.calleridname, "unknown"))
     {
-        strlcpy(calleridname, "", sizeof(calleridname));
+        strlcpy(g_call.calleridname, "", sizeof(g_call.calleridname));
     }
 
     //	Alphatag
-    if (strcmp(calleridname, ""))
+    if (strcmp(g_call.calleridname, ""))
     {
-        snprintf(clidstrng, sizeof(clidstrng), "CALLERID(name)=%s", calleridname);
+        snprintf(clidstrng, sizeof(clidstrng), "CALLERID(name)=%s", g_call.calleridname);
         AGITool_exec(&agi, &res, "Set", clidstrng);
     }
 
@@ -2231,7 +2228,7 @@ void CheckState(char *remotenum)
         //   PBX is in hard CLOSED state - use closed route;
         AGITool_set_priority(&agi, &res, 1);
         AGITool_set_extension(&agi, &res, closeroute);
-        AGITool_set_context(&agi, &res, myClusterContext);
+        AGITool_set_context(&agi, &res, g_call.myClusterContext);
     }
     else
 /**
@@ -2246,7 +2243,7 @@ void CheckState(char *remotenum)
             //   Closed(remotenum);
             AGITool_set_priority(&agi, &res, 1);
             AGITool_set_extension(&agi, &res, closeroute);
-            AGITool_set_context(&agi, &res, myClusterContext);
+            AGITool_set_context(&agi, &res, g_call.myClusterContext);
         }
         else
 /**
@@ -2256,7 +2253,7 @@ void CheckState(char *remotenum)
             //    Open(remotenum);
             AGITool_set_priority(&agi, &res, 1);
             AGITool_set_extension(&agi, &res, openroute);
-            AGITool_set_context(&agi, &res, myClusterContext);
+            AGITool_set_context(&agi, &res, g_call.myClusterContext);
         }
     }
 }
@@ -2280,7 +2277,7 @@ char *CheckTime(char *cluster)
         return "CLOSED";
     }
 
-    if (!strcmp(DBGet(myCluster, "OCSTAT"), "CLOSED"))
+    if (!strcmp(DBGet(g_call.myCluster, "OCSTAT"), "CLOSED"))
     {
         return "CLOSED";
     }
@@ -2297,8 +2294,9 @@ char *CheckTime(char *cluster)
     return "OPEN";
 }
 
-void IVR(char *ivrname)
+void IVR(agi_session_t *s, char *ivrname)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -2351,7 +2349,7 @@ void IVR(char *ivrname)
         AGITool_answer(&agi, &res);
 
         strlcpy(greetnum, sqlQueryBind1("SELECT greetnum FROM ivrmenu WHERE pkey=?", PARM_KEY), sizeof(greetnum));
-        snprintf(msg, sizeof(msg), "%s%s/usergreeting%s", SOUNDIR, myCluster, greetnum);
+        snprintf(msg, sizeof(msg), "%s%s/usergreeting%s", SOUNDIR, g_call.myCluster, greetnum);
         /*
          * We can use stream or get_data, depending upon whether the user wants the
          * ivr to "listen" for an extension dial as well as an ivr choice.
@@ -2399,7 +2397,7 @@ void IVR(char *ivrname)
                 {
                     AGITool_set_priority(&agi, &res, 1);
                     AGITool_set_extension(&agi, &res, dtmf);
-                    AGITool_set_context(&agi, &res, myClusterContext);
+                    AGITool_set_context(&agi, &res, g_call.myClusterContext);
                     return;
                 }
                 IVRAction(PARM_KEY, dtmf);
@@ -2410,7 +2408,7 @@ void IVR(char *ivrname)
         // If no key is pressed then perform the timeout action
         if (!strcmp(sqlQueryBind1("SELECT timeout FROM ivrmenu WHERE pkey=?", PARM_KEY), "Repeat Message"))
         {
-            IVR(ivrname);
+            IVR(s, ivrname);
             return;
         }
         else
@@ -2478,19 +2476,19 @@ void IVRAction(char *menu, char *press)
         strcpy(tagID, sqlQueryBind1(myQuery, menu));
         if (strcmp(tagID, ""))
         {
-            strlcpy(calleridname, tagID, sizeof(calleridname));
+            strlcpy(g_call.calleridname, tagID, sizeof(g_call.calleridname));
         }
     }
     // CLIP Processing
 
-    if (!strcmp(calleridname, "unknown"))
+    if (!strcmp(g_call.calleridname, "unknown"))
     {
-        strlcpy(calleridname, "", sizeof(calleridname));
+        strlcpy(g_call.calleridname, "", sizeof(g_call.calleridname));
     }
     //	Alphatag
-    if (strcmp(calleridname, ""))
+    if (strcmp(g_call.calleridname, ""))
     {
-        snprintf(clidstrng, sizeof(clidstrng), "CALLERID(name)=%s", calleridname);
+        snprintf(clidstrng, sizeof(clidstrng), "CALLERID(name)=%s", g_call.calleridname);
         AGITool_exec(&agi, &res, "Set", clidstrng);
     }
     //  Route it
@@ -2498,7 +2496,7 @@ void IVRAction(char *menu, char *press)
     {
         AGITool_set_priority(&agi, &res, 1);
         AGITool_set_extension(&agi, &res, action);
-        AGITool_set_context(&agi, &res, myClusterContext);
+        AGITool_set_context(&agi, &res, g_call.myClusterContext);
         return;
     }
     // bad key press?
@@ -2554,8 +2552,9 @@ PARAMS
 ***********************************************************************/
 
 // void OutQmt(char* number, char* channel, char* queue, char* agent) {
-void OutQmt()
+void OutQmt(agi_session_t *s)
 {
+    (void)s;
 
     DebugFunctionTrace(__FUNCTION__);
 
@@ -2575,9 +2574,9 @@ void OutQmt()
     //
     //    initial log entries for queuemetrics
     //
-    snprintf(buffer, sizeof(buffer), "%d|%s|%s|NONE|ENTERQUEUE|-|%s", nowstart, uniqueid, PARM_PM2, PARM_KEY);
+    snprintf(buffer, sizeof(buffer), "%d|%s|%s|NONE|ENTERQUEUE|-|%s", nowstart, g_call.uniqueid, PARM_PM2, PARM_KEY);
     QLogWrite(buffer);
-    snprintf(buffer, sizeof(buffer), "%d|%s|%s|%s|CONNECT|0||", nowstart, uniqueid, PARM_PM2, PARM_PM3);
+    snprintf(buffer, sizeof(buffer), "%d|%s|%s|%s|CONNECT|0||", nowstart, g_call.uniqueid, PARM_PM2, PARM_PM3);
     QLogWrite(buffer);
     //
     // 	turn off HUP so we can run "deadagi" after the dial
@@ -2592,7 +2591,7 @@ void OutQmt()
     //
     //    Do the Dial
     //
-    strlcpy(extension, PARM_KEY, sizeof(extension));
+    strlcpy(g_call.extension, PARM_KEY, sizeof(g_call.extension));
     OutVoip(PARM_PM1);
     if (atoi(res.result))
     {
@@ -2612,16 +2611,16 @@ void OutQmt()
 
     if (answeredtime == 0)
     {
-        snprintf(buffer, sizeof(buffer), "%d|%s|%s|NONE|ABANDON|1|1", nowend, uniqueid, PARM_PM2);
+        snprintf(buffer, sizeof(buffer), "%d|%s|%s|NONE|ABANDON|1|1", nowend, g_call.uniqueid, PARM_PM2);
         QLogWrite(buffer);
         return;
     }
 
     waittime = (nowend - nowstart) - answeredtime;
     connecttime = nowend - answeredtime;
-    snprintf(buffer, sizeof(buffer), "%d|%s|%s|%s|CONNECT|%d|", connecttime, uniqueid, PARM_PM2, PARM_PM3, waittime);
+    snprintf(buffer, sizeof(buffer), "%d|%s|%s|%s|CONNECT|%d|", connecttime, g_call.uniqueid, PARM_PM2, PARM_PM3, waittime);
     QLogWrite(buffer);
-    snprintf(buffer, sizeof(buffer), "%d|%s|%s|%s|%s|%d|%d|", nowend, uniqueid, PARM_PM2, PARM_PM3, whohungup, waittime, answeredtime);
+    snprintf(buffer, sizeof(buffer), "%d|%s|%s|%s|%s|%d|%d|", nowend, g_call.uniqueid, PARM_PM2, PARM_PM3, whohungup, waittime, answeredtime);
     QLogWrite(buffer);
 
     return;
@@ -2681,10 +2680,10 @@ void outboundClip(char *key)
 
 
 	// If there is a cluster CLID then it trumps the line 
-	if (strcmp(myClusterclid, "")) {
-		sprintf (vmsg,"Cluster CLID %s found", myClusterclid);
+	if (strcmp(g_call.myClusterclid, "")) {
+		sprintf (vmsg,"Cluster CLID %s found", g_call.myClusterclid);
 		AGITool_verbose(&agi,&res,vmsg,1);
-		strcpy(clidwork, myClusterclid);
+		strcpy(clidwork, g_call.myClusterclid);
 	}
 	else {
 		sprintf (vmsg,"no cluster CLID found for outbound call, using key %s", key);
@@ -2693,12 +2692,12 @@ void outboundClip(char *key)
 
 
 	//if there is an extension CLID or RDNIS CLID then it trumps the line and cluster CLID 
-	if (caller_is_local) {
-		strcpy(clidphone, sqlQueryBind1("SELECT callerid FROM IPphone WHERE pkey=?", callerid));		
+	if (g_call.caller_is_local) {
+		strcpy(clidphone, sqlQueryBind1("SELECT callerid FROM IPphone WHERE pkey=?", g_call.callerid));		
 	}
 	// if the RDNIS is local, set its CLID into clidphone
-	else if (rdnis_is_local) {
-		strcpy(clidphone, sqlQueryBind1("SELECT callerid FROM IPphone WHERE pkey=?", rdnis));
+	else if (g_call.rdnis_is_local) {
+		strcpy(clidphone, sqlQueryBind1("SELECT callerid FROM IPphone WHERE pkey=?", g_call.rdnis));
 	}
 
 	// Only take the extension clid if it is longer than 5 characters (i.e. - not an extension number)
@@ -2736,7 +2735,7 @@ void outboundClip(char *key)
 	// check we have a CLID to set
 	if (strcmp(clidwork,"")) {
 		// If this is a locally originated call then we can use the CLID we found
-		if (caller_is_local) {
+		if (g_call.caller_is_local) {
 			sprintf (vmsg,"Using CLID %s for outbound call, using key %s", clidwork, key);
 			AGITool_verbose(&agi,&res,vmsg,1);
 			sprintf(clidstrng,"CALLERID(number)=%s",clidwork);
@@ -2747,7 +2746,7 @@ void outboundClip(char *key)
 			// in the case of a local call which already has RDNIS set.  This will happen if the diversion has come from a phone
 			// (rather than a pbx divert, e.g. *21*) and the phone has set the RDNIS to the original callerid.
 		
-			if (rdnis_is_set) {
+			if (g_call.rdnis_is_set) {
 				sprintf (vmsg,"Using CLID %s to override local RDNIS", clidwork);
 				AGITool_verbose(&agi,&res,vmsg,1);
 				sprintf(clidstrng,"CALLERID(RDNIS)=%s",clidwork);
