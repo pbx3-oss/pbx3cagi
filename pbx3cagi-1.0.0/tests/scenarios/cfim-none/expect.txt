@@ -1,5 +1,5 @@
 must-not EXEC Playback pls-hold-while-try
 must-not SET EXTENSION 1102
 must-not EXEC Dial
-must SET VARIABLE PBX3_DIAL
+must SET VARIABLE PBX3_DIAL "PJSIP/testex01,20,ktT"
 exit 0

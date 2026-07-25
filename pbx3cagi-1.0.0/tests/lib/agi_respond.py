@@ -4,6 +4,10 @@ AGI protocol peer for offline pbx3cagi tests.
 
 Writes the AGI env block, spawns pbx3cagi, reads AGI commands from child stdout,
 writes mock 200 responses on child stdin. One child process per invocation.
+
+Optional scenario files:
+  variables.json  — GET VARIABLE name → value (e.g. DIALSTATUS)
+  env.json        — extra process env (e.g. PBX3_FLEET_MODE=1)
 """
 
 from __future__ import annotations
@@ -20,13 +24,32 @@ DB_GET_RE = re.compile(r'^DATABASE GET "([^"]*)" "([^"]*)"\s*$')
 GET_VAR_RE = re.compile(r'^GET VARIABLE (\S+)\s*$')
 
 
-def load_astdb(scenario_dir: Path) -> dict[str, str]:
-    path = scenario_dir / "astdb.json"
+def load_json_map(path: Path) -> dict[str, str]:
     if not path.is_file():
         return {}
     with path.open(encoding="utf-8") as fh:
         data = json.load(fh)
     return {str(k): str(v) for k, v in data.items()}
+
+
+def load_astdb(scenario_dir: Path) -> dict[str, str]:
+    return load_json_map(scenario_dir / "astdb.json")
+
+
+def load_variables(scenario_dir: Path) -> dict[str, str]:
+    """Channel/Asterisk vars answered for GET VARIABLE."""
+    defaults = {
+        "DEBUG": "",
+        "BLINDTRANSFER": "",
+        "MOH": "",
+        "DIALSTATUS": "",
+    }
+    defaults.update(load_json_map(scenario_dir / "variables.json"))
+    return defaults
+
+
+def load_env_overlay(scenario_dir: Path) -> dict[str, str]:
+    return load_json_map(scenario_dir / "env.json")
 
 
 def agi_value_response(value: str) -> str:
@@ -35,7 +58,7 @@ def agi_value_response(value: str) -> str:
     return f"200 result=1 ({value})\n"
 
 
-def handle_command(line: str, astdb: dict[str, str]) -> str:
+def handle_command(line: str, astdb: dict[str, str], variables: dict[str, str]) -> str:
     line = line.rstrip("\r\n")
 
     m = DB_GET_RE.match(line)
@@ -47,11 +70,7 @@ def handle_command(line: str, astdb: dict[str, str]) -> str:
     m = GET_VAR_RE.match(line)
     if m:
         var = m.group(1)
-        if var == "DEBUG":
-            return agi_value_response("")
-        if var == "BLINDTRANSFER":
-            return agi_value_response("")
-        return agi_value_response("")
+        return agi_value_response(variables.get(var, ""))
 
     # EXEC, SET CONTEXT / EXTENSION / PRIORITY / VARIABLE, WAIT FOR DIGIT, etc.
     return "200 result=0\n"
@@ -65,6 +84,7 @@ def run_scenario(
     agi_env = (scenario_dir / "agi_env.txt").read_text(encoding="utf-8")
     argv = (scenario_dir / "argv.txt").read_text(encoding="utf-8").split()
     astdb = load_astdb(scenario_dir)
+    variables = load_variables(scenario_dir)
 
     env = os.environ.copy()
     tenant_db = os.environ.get("PBX3CAGI_SQLITE_DB")
@@ -72,6 +92,7 @@ def run_scenario(
         default_db = scenario_dir.parent.parent / "fixtures" / "tenant" / "sqlite.rdonly.db"
         if default_db.is_file():
             env["PBX3CAGI_SQLITE_DB"] = str(default_db.resolve())
+    env.update(load_env_overlay(scenario_dir))
 
     child = subprocess.Popen(
         [str(pbx3cagi), *argv],
@@ -111,12 +132,11 @@ def run_scenario(
             continue
 
         transcript.append(line.rstrip("\r\n"))
-        response = handle_command(line, astdb)
+        response = handle_command(line, astdb, variables)
         child.stdin.write(response)
         child.stdin.flush()
 
         if child.poll() is not None:
-            # Drain any remaining output without blocking forever.
             while True:
                 ready, _, _ = select.select([stdout_fd], [], [], 0.05)
                 if not ready:

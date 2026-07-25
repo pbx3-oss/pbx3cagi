@@ -1,0 +1,4 @@
+must GET VARIABLE DIALSTATUS
+must EXEC Voicemail
+must-not EXEC Dial
+exit 0

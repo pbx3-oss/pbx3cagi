@@ -46,7 +46,14 @@ CREATE TABLE IF NOT EXISTS cluster (
     "routeoverride" TEXT DEFAULT '',
     "voip_max" INTEGER DEFAULT 30,
     "cname" TEXT,
-    "fqdn" TEXT
+    "fqdn" TEXT,
+    "domain" TEXT DEFAULT ''
+);
+
+-- Minimal trunks table so PrepDial's active lookup prepares cleanly (no rows needed).
+CREATE TABLE IF NOT EXISTS trunks (
+    "pkey" TEXT PRIMARY KEY,
+    "active" TEXT DEFAULT 'YES'
 );
 
 CREATE TABLE IF NOT EXISTS ipphone (
@@ -68,6 +75,7 @@ CREATE TABLE IF NOT EXISTS ipphone (
 );
 
 DELETE FROM ipphone;
+DELETE FROM trunks;
 DELETE FROM cluster;
 DELETE FROM globals;
 
@@ -75,9 +83,9 @@ INSERT INTO globals (id, shortuid, pkey, sitename, fqdn, domain) VALUES
     ('fix00000000000000000000001', 'testgl01', 'global', 'Demo Test PBX', 'test.pbx3.local', 'pbx3.local');
 
 INSERT INTO cluster (
-    id, shortuid, pkey, cname, fqdn, play_transfer, voice_instr, callrecord_1, usemohcustom
+    id, shortuid, pkey, cname, fqdn, domain, play_transfer, voice_instr, callrecord_1, usemohcustom
 ) VALUES (
-    'fix00000000000000000000002', 'testtn01', 'tenant01', 'Tenant 01', 'testtn01.pbx3.local', 1, 1, 'None', 'NO'
+    'fix00000000000000000000002', 'testtn01', 'tenant01', 'Tenant 01', 'testtn01.pbx3.local', 'testtn01.pbx3.local', 1, 1, 'None', 'NO'
 );
 
 INSERT INTO ipphone (
