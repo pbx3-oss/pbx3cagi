@@ -72,17 +72,6 @@ int caller_is_local = FALSE;
 int rdnis_is_local = FALSE;
 int rdnis_is_set = FALSE;
 
-/**
- * only used five times for two variants CFIM CFBS - get rid) - set in the cases
-*/
-char *cfTab[50] =
-    {
-        "", "", "", "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "cfim", "cfim", "cfim",
-        "cfim", "cfbs", "", "", "", "", "cfim", "cfimopen", "cfbsopen", "",
-        "", "", "", "", "", "", "", "cfimclosed", "cfbsclosed", "",
-        "cfim", "cfim", "", "", "", "", "", "", ""};
-
 void sig_handler(int signum)
 {
 
@@ -762,15 +751,6 @@ void setMoh()
     return;
 }
 
-void hangUp()
-{
-
-    DebugFunctionTrace(__FUNCTION__);
-
-    AGITool_exec(&agi, &res, "Hangup", "");
-    return;
-}
-
 char *GetExt(char *number)
 {
 
@@ -1220,18 +1200,6 @@ void AgentUnpause()
         AGITool_exec(&agi, &res, "UnPauseQueueMember", queuearg);
     }
     AGITool_exec(&agi, &res, "Playback", "beep");
-}
-
-void AgentSpy()
-{
-
-    DebugFunctionTrace(__FUNCTION__);
-
-    if (Authenticate("SPYPASS") != 0) //** spy_pass is held in the tenant table (used to be in Globals)
-    {
-        return;
-    }
-    AGITool_exec(&agi, &res, "ChanSpy", "Agent");
 }
 
 //ToDo needs to become extenSpy
@@ -2170,55 +2138,6 @@ char *SetRecord(char *key, char *compass)
     return pdial;
 }
 
-void Page()
-/**
- * No longer needs localip
- */
-{
-
-    DebugFunctionTrace(__FUNCTION__);
-
-    char dialStr[2048] = {'\0'};
-    char sipHeader[64] = {'\0'};
-    char speedKey[32] = {'\0'};
-    char ext[MAX_EXT_LEN] = {'\0'};
-
-    strlcpy(ext, GetExt(PARM_CMD), sizeof(ext));
-    strlcat(speedKey, ext, sizeof(speedKey));
-
-    snprintf(sipHeader, sizeof(sipHeader), "Call-Info:<sip:127.0.0.1>;answer-after=0");
-    // Page all extensions
-    if (!strcmp(ext, ""))
-    {
-        sqlQueryBind1("SELECT pagegroup FROM page WHERE pkey=?", "pageall");
-        strlcpy(dialStr, rescols[0], sizeof(dialStr));
-        AGITool_exec(&agi, &res, "SIPAddHeader", sipHeader);
-        AGITool_exec(&agi, &res, "Page", dialStr);
-    }
-    // Page single extension
-    else
-    {
-        if (!strcmp(ext, sqlQueryBind1("SELECT pkey FROM IPphone WHERE pkey=?", ext)))
-        {
-            strlcpy(dialStr, SIPDRIVER, sizeof(dialStr));
-            strlcat(dialStr, "/", sizeof(dialStr));
-            strlcat(dialStr, ext, sizeof(dialStr));
-            AGITool_exec(&agi, &res, "SIPAddHeader", sipHeader);
-            AGITool_exec(&agi, &res, "Page", dialStr);
-        }
-        // Page a group of extensions
-        else
-        {
-            if (!strcmp(ext, sqlQueryBind1("SELECT pkey FROM speed WHERE pkey=?", speedKey)))
-            {
-                strlcpy(dialStr, sqlQueryBind1("SELECT pagegroup FROM speed WHERE pkey=?", speedKey), sizeof(dialStr));
-                AGITool_exec(&agi, &res, "SIPAddHeader", sipHeader);
-                AGITool_exec(&agi, &res, "Page", dialStr);
-            }
-        }
-    }
-}
-
 /**
  *  Checks for a call forward and actions it.
  *  type - cfbs or cfim
@@ -2492,35 +2411,6 @@ char *StripPreselect(char *preSel, char *number)
         }
     }
     return number;
-}
-
-void SetTimer()
-{
-
-    DebugFunctionTrace(__FUNCTION__);
-
-    if (Authenticate("SYSPASS") != 0) //** syspass is held in the tenant table (used to be in Globals)
-    {
-        return;
-    }
-    switch (switchdig)
-    {
-    case 30:
-        DBPut("STAT", "OCSTAT", "AUTO");
-        break;
-    case 31:
-        DBPut("STAT", "OCSTAT", "CLOSED");
-        break;
-    case 32:
-        DBPut("STAT", "OCSTAT", "OPEN");
-        break;
-    default:
-        snprintf(vmsg, sizeof(vmsg), "This SetTimer parameter (%i)is not supported", switchdig);
-        AGITool_verbose(&agi, &res, vmsg, 1);
-        return;
-    }
-    AGITool_exec(&agi, &res, "Playback", "activated");
-    return;
 }
 
 void Ingress()

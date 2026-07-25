@@ -102,11 +102,13 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 - When extracting a module: group “Asterisk DB: …” vs “pbx3 SQLite: bind helpers + `load_cluster_cfg`”.
 - Outcome today: one bound-read path for tenant data + explicit cluster load; easier to move into `agi_sqlite.c` later.
 
-**1.3 Remove or isolate dead code**
+**1.3 Remove or isolate dead code** — **done 2026-07-25**
 
-- Either delete commented-out cases (OutCos, OutCluster, Alias, hangUp, SetTimer 33–35) and the commented PlayGreet block, or move them to a single “#if 0 … #endif” block at the bottom with a “Legacy/unused” comment.
-- Resolve cfTab: either trim to used indices and add a comment, or replace the table with a small function (switchdig → string). Document the mapping.
-- Outcome: less noise and fewer “is this used?” questions.
+- Removed unused `cfTab` (never read).
+- Removed unreachable handlers: `hangUp`, `Page`, `SetTimer`, `AgentSpy` (no `switch` cases called them; star-code cases that used to dispatch them were already gone).
+- Removed orphan prototypes from `pbx3cagi.h` (`Alias`, `miscSvcs`, `SetCluster`, `RingGroup`, `HuntGroup`, `OutGroup`, `Voicemail`, `EchoTest`, `DateTime`, `SysRestart`, `DialBack`, `GetDBProp`, `GetKeys`, `DBQueryKeys`, `SetOperator`, `SetCFExtrn`, `routeClass`, etc.).
+- Commented OutCos/OutCluster/PlayGreet blocks were already absent from `main`.
+- Gate: `make test` (7 scenarios) PASS after cleanup.
 
 ---
 
@@ -171,8 +173,8 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 1. **Phase 0:** AGI test harness — **`TEST_HARNESS.md`** deliverables 0.1–0.8 — **built on `main`**; golden sign-off in progress. **Gate** for Phase 1.1+ when refactor resumes.
 2. **Product (now):** **S8** fleet lifecycle → **R1** recordings management → **S7** recordings S3 — **`pbx3/pbx3-directory/docs/IMPLEMENTATION_PLAN.md`**, **`pbx3/workingdocs/TODO.md`**.
 3. **Phase 1.2** (SQLite) – **largely complete:** bound reads (`sqlQueryBind1`/`2`), shared handle, removed `sqlQuery`/`DBQuery`/`sqlSelectEq`.
-4. **Phase 1.3** (dead code) – quick cleanup. Run Phase 0 suite after. **Deferred** until S8 + R1 underway.
-5. **Phase 1.1** (struct for call context) – one global at a time. Run Phase 0 suite after each commit. **Deferred**.
+4. **Phase 1.3** (dead code) – **done 2026-07-25** (`make test` green).
+5. **Phase 1.1** (struct for call context) – one global at a time. Run Phase 0 suite after each commit. **Next**.
 6. **Phase 2.1** (command table) – then you can add commands without touching the big switch.
 7. **Phase 2.2** (DB module) – move SQLite behind `agi_sqlite.c`.
 8. **Phase 2.3** (init_call_context).
