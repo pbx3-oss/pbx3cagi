@@ -81,9 +81,43 @@ typedef struct cluster_cfg {
     char fqdn[128]; /* tenant SIP domain (cluster.fqdn / cname) for RURI */
 } cluster_cfg_t;
 
-extern cluster_cfg_t g_cluster_cfg;
+/**
+ * Phase 1.1 — call / AGI-arg context (still process-global today).
+ * Phase 3 will pass pointers into handlers; compatibility macros in pbx3cagi.c
+ * keep existing `callerid` / `myargv` names working unchanged.
+ */
+typedef struct agi_call_ctx {
+    char uniqueid[64];
+    char callerid[MAX_EXT_LEN];
+    char calleridname[MAX_EXT_LEN];
+    char channel[64];
+    char chanId[64];
+    char context[MAX_CLUSTER_LEN];
+    char agi_dnid[MAX_EXT_LEN];
+    char extension[MAX_EXT_LEN];
+    char rdnis[MAX_EXT_LEN];
+    char myCluster[MAX_CLUSTER_LEN];
+    char myClusterclid[MAX_EXT_LEN];
+    char myClusterContext[MAX_CLUSTER_LEN];
+    char myClusterId[3];
+    int callee_is_local;
+    int caller_is_local;
+    int rdnis_is_local;
+    int rdnis_is_set;
+} agi_call_ctx_t;
 
-int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg);
+typedef struct agi_parms {
+    char **argv;
+    int argc;
+    int switchdig;
+} agi_parms_t;
+
+extern agi_call_ctx_t g_call;
+extern agi_parms_t g_parms;
+
+/* pbx3 SQLite (rescols, g_cluster_cfg, sqlQueryBind*, load_cluster_cfg) */
+#include "agi_sqlite.h"
+
 int AuthenticatePassword(const char *password_plain);
 
 char* GetExt(char* number);

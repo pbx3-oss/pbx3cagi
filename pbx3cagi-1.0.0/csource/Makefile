@@ -19,11 +19,14 @@ endif
 
 all: pbx3cagi
 
-pbx3cagi:  pbx3cagi.o cagi.o sqlite3.o
-	$(CC) pbx3cagi.o cagi.o sqlite3.o -o pbx3cagi -pthread -ldl $(LDFLAGS_BSD)
+pbx3cagi:  pbx3cagi.o agi_sqlite.o cagi.o sqlite3.o
+	$(CC) pbx3cagi.o agi_sqlite.o cagi.o sqlite3.o -o pbx3cagi -pthread -ldl $(LDFLAGS_BSD)
 
 pbx3cagi.o: pbx3cagi.c
 	$(CC) $(CFLAGS) pbx3cagi.c $(DFLAGS) 
+
+agi_sqlite.o: agi_sqlite.c
+	$(CC) $(CFLAGS) agi_sqlite.c $(DFLAGS)
 
 cagi.o: cagi.c
 	$(CC) $(CFLAGS) cagi.c
@@ -31,7 +34,9 @@ cagi.o: cagi.c
 sqlite3.o: sqlite3.c
 	$(CC) $(CFLAGS) sqlite3.c -Os
 
-pbx3cagi.c: pbx3cagi.h
+pbx3cagi.c: pbx3cagi.h agi_sqlite.h
+
+agi_sqlite.c: agi_sqlite.h pbx3cagi.h
 
 cagi.c: cagi.h
 

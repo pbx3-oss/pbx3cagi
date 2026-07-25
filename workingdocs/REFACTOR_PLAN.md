@@ -11,9 +11,9 @@
 
 ## Current State
 
-- **pbx3cagi.c**: ~3,210 lines, single translation unit.
+- **pbx3cagi.c**: ~2,790 lines (+ `agi_sqlite.c` for tenant SQLite).
 - **~35 global variables** (call state, cluster, channel, DB result buffer, AGI args, debug).
-- **~45 functions**: one big `main()` with a 30+ case switch, then command handlers and shared helpers.
+- **~45 functions**: `main()` dispatches via `agi_cmd_table[]` (Phase 2.1); command handlers in `pbx3cagi.c`; SQLite binds / `load_cluster_cfg` in `agi_sqlite.c`.
 - **Tight coupling**: every command handler reads/writes globals (`agi`, `res`, `myCluster`, `rescols[]`, `callerid`, etc.) and calls shared DB/AGI helpers.
 
 ### Data access: two separate systems
@@ -28,8 +28,8 @@ Refactor steps should treat these as distinct: “SQLite module” = pbx3 data o
 | Section              | Approx lines | Role |
 |----------------------|-------------|------|
 | Globals + cfTab      | 1–80        | Call context, AGI args, constants |
-| main()               | 116–399     | Init, SetCluster, switch(switchdig) → handlers |
-| SetCluster / setMoh  | 406–560     | Cluster resolution, MOH |
+| main()               | (see source) | Init, PARM_CLST → myCluster, cmd table dispatch |
+| setMoh               | (see source) | MOH from cluster cfg |
 | Helpers (GetExt, Mangle, Auth, RecGreet, etc.) | 562–1085 | Small utilities + Agent/ChanSpy |
 | OutRoute             | 1086–1306   | Outbound routing |
 | OutTrunk / OutVoip   | 1308–1478   | Trunk/VoIP dial |
@@ -42,7 +42,7 @@ Refactor steps should treat these as distinct: “SQLite module” = pbx3 data o
 | CheckState, CheckTime, routeClass | 2427–2666 | Time/state, route class |
 | IVR / IVRAction      | 2668–2888   | IVR menus |
 | **Asterisk DB** (DBGet, DBPut, DBDel) | 2890–2912 | Asterisk internal DB via AGI (DATABASE GET/PUT/DEL) – call state, agent login, etc. |
-| **SQLite** (`sqlQueryBind1`/`2`, `load_cluster_cfg`) | (grep `sqlQueryBind` / `load_cluster_cfg` in .c) | pbx3 tenant data; bound reads + one direct cluster load |
+| **SQLite** (`agi_sqlite.c`: bind helpers + `load_cluster_cfg`) | (see `agi_sqlite.c`) | pbx3 tenant data; results in `rescols[]` |
 | OutQmt, QLogWrite, outboundClip, consoleMsg | 3133–3325 | Queue log, clip, logging |
 
 ---
@@ -54,7 +54,7 @@ Refactor steps should treat these as distinct: “SQLite module” = pbx3 data o
 3. **Two different “DB” mechanisms**: (a) **Asterisk DB** – DBGet/DBPut/DBDel call Asterisk’s internal database via AGI (DATABASE GET/PUT/DEL); used for runtime call state, agent login, DYNLOGIN, etc. (b) **SQLite** – pbx3 tenant DB via shared handle + **`sqlQueryBind1`/`sqlQueryBind2`** and **`load_cluster_cfg`**. They are quite separate; treat them as distinct.
 4. **Historical duplicate SQLite paths**: Addressed — single bind-based executor for runtime reads; `sqlQuery` / `DBQuery` / `sqlSelectEq` removed.
 5. **Dead/optional code**: Commented cases (OutCos, OutCluster, Alias, hangUp, SetTimer 33–35), PlayGreet in a block comment; cfTab “get rid” note.
-6. **Switch in main**: Adding a command means editing main() and a large file.
+6. **Switch in main**: Addressed in Phase 2.1 — add a table row (+ handler); optional extract to `agi_commands.c` still open.
 
 ---
 
@@ -86,14 +86,13 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 
 ### Phase 1: Consolidate and Clarify (no new files)
 
-**1.1 Group globals into a small number of structs (call context)**
+**1.1 Group globals into a small number of structs (call context)** — **done 2026-07-25**
 
-- Introduce 2–3 structs in the header, e.g.:
-  - `agi_call_ctx_t`: callerid, extension, channel, context, rdnis, uniqueid, myCluster, myClusterContext, myClusterId, chanId.
-  - `agi_parms_t`: myargv, myargc, switchdig (or equivalent).
-  - Keep `rescols` and maybe `abstimeout`/`abstimeint` in a “runtime” or “db_result” struct if you want, or leave as globals for now.
-- Replace individual global reads/writes with `ctx->callerid`, etc., **one variable at a time**, with a single commit per rename so behaviour is unchanged.
-- Outcome: one place that defines “call context”; easier to pass a pointer later.
+- Added `agi_call_ctx_t` (`g_call`) and `agi_parms_t` (`g_parms`) in `pbx3cagi.h`.
+- Call identity / cluster / locality flags and argv/`switchdig` live in those structs.
+- Compatibility macros in `pbx3cagi.c` keep existing names (`callerid`, `myargv`, …) so handlers are unchanged for now.
+- Left `rescols`, `abstimeout`/`abstimeint`, `debug`, CLID scratch, route-class scratch as plain globals (Phase 3 / later).
+- Gate: `make test` PASS.
 
 **1.2 Clarify and deduplicate the two data-access layers**
 
@@ -114,25 +113,26 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 
 ### Phase 2: Split by Domain (new source files, same binary)
 
-**2.1 Command table instead of big switch**
+**2.1 Command table instead of big switch** — **done 2026-07-25**
 
-- Define a small struct, e.g. `{ int case_num; void (*handler)(void); }` or `handler(int argc, char **argv)`.
-- Fill a static table: case 1 → OutTrunk, case 2 → OutRoute, … .
-- In main(), after setting switchdig, loop over the table and call the matching handler (or use a map if you prefer).
-- Move the table and handler declarations to a new file, e.g. `agi_commands.c` / `agi_commands.h`, with handlers still implemented in pbx3cagi.c (or move one handler at a time later).
-- Outcome: adding a command = adding a row and implementing a function; main() stays small.
+- Added `agi_cmd_entry_t` + static `agi_cmd_table[]` in `pbx3cagi.c` (still one TU; extract to `agi_commands.c` later if useful).
+- Named cmds (`OutTrunk`…`PostDial`) and feature-code case numbers share one table; thin wrappers for handlers that need `PARM_*` (`cmd_OutTrunk`, `cmd_Dial`, `cmd_IVR`).
+- `main()`: name → `switchdig` via `agi_cmd_lookup_name`, then `agi_cmd_dispatch(switchdig)`.
+- Gate: `make test` PASS. Next: **2.2** SQLite extract, **2.3** init extract, or **Phase 3** pass pointers / drop macros.
 
-**2.2 Extract SQLite module (pbx3 data only)**
+**2.2 Extract SQLite module (pbx3 data only)** — **done 2026-07-25**
 
-- New files: e.g. `agi_sqlite.c`, `agi_sqlite.h` (or `pbx3_db.c`), to make clear this is *pbx3* data, not Asterisk DB.
-- Move **`sqlQueryBindInternal` / `sqlQueryBind1` / `sqlQueryBind2`**, **`sqlGetSharedHandle`**, and optionally **`load_cluster_cfg`** into this module. Expose APIs with results in `rescols[]` (or a struct passed in).
-- **Do not** move DBGet/DBPut/DBDel into this module – they are Asterisk DB (AGI DATABASE GET/PUT/DEL), not SQLite.
-- Outcome: pbx3 SQLite access in one place; Asterisk DB remains AGI-side.
+- New files: `agi_sqlite.c`, `agi_sqlite.h`. Makefile links `agi_sqlite.o`.
+- Moved: shared handle + `sqlitedb_path` (`PBX3CAGI_SQLITE_DB` override), `sqlQueryBindInternal` / `sqlQueryBind1` / `sqlQueryBind2`, `load_cluster_cfg` (+ defaults / escape), `rescols`, `g_cluster_cfg`.
+- Left in `pbx3cagi.c`: `pbx3_fleet_mode` (fleet dial logic that *calls* bind), Asterisk DB `DBGet`/`DBPut`/`DBDel`.
+- Lock-retry still uses AGI `Wait` (same behaviour); module takes `extern` `agi`/`res`/`debug`/`vmsg` for that.
+- Gate: `make test` PASS. Next: **2.3** init extract, or **Phase 3** pass pointers / drop macros.
 
 **2.3 Extract “call context” initialisation**
 
-- Move the block that sets callerid, extension, cluster, rdnis_is_local, etc. (everything up to and including SetCluster()) into one function, e.g. `agi_init_call_context(agi_call_ctx_t *ctx, int argc, char **argv)`.
-- main() becomes: AGITool_Init → agi_init_call_context → setMoh → command table dispatch → AGITool_Destroy.
+- Move the block in `main()` that fills call identity from AGI vars (`callerid`, `extension`, `rdnis`, locality flags, etc.), resolves **tenant/cluster from dialplan argv** (`PARM_CLST` / `myargv[3]`, with fallback to `agi_context`), sets accountcode / `load_cluster_cfg`, etc. into one function, e.g. `agi_init_call_context(agi_call_ctx_t *ctx, int argc, char **argv)`.
+- There is **no** `SetCluster()` anymore — cluster is passed in from `extensions.conf` (GenAst) as an AGI arg; this phase only extracts that inline setup.
+- `main()` becomes: AGITool_Init → agi_init_call_context → setMoh → command table dispatch → AGITool_Destroy.
 - Outcome: main() is a short, readable sequence; context setup is one place.
 
 ---
@@ -174,10 +174,10 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 2. **Product (now):** **S8** fleet lifecycle → **R1** recordings management → **S7** recordings S3 — **`pbx3/pbx3-directory/docs/IMPLEMENTATION_PLAN.md`**, **`pbx3/workingdocs/TODO.md`**.
 3. **Phase 1.2** (SQLite) – **largely complete:** bound reads (`sqlQueryBind1`/`2`), shared handle, removed `sqlQuery`/`DBQuery`/`sqlSelectEq`.
 4. **Phase 1.3** (dead code) – **done 2026-07-25** (`make test` green).
-5. **Phase 1.1** (struct for call context) – one global at a time. Run Phase 0 suite after each commit. **Next**.
-6. **Phase 2.1** (command table) – then you can add commands without touching the big switch.
-7. **Phase 2.2** (DB module) – move SQLite behind `agi_sqlite.c`.
-8. **Phase 2.3** (init_call_context).
+5. **Phase 1.1** (struct for call context) – **done 2026-07-25** (`g_call` / `g_parms` + name macros; `make test` green).
+6. **Phase 2.1** (command table) – **done 2026-07-25** (`agi_cmd_table` + dispatch; `make test` green).
+7. **Phase 2.2** (DB module) – **done 2026-07-25** (`agi_sqlite.c`; `make test` green).
+8. **Phase 2.3** (init_call_context). **Next** (or Phase 3).
 9. **Phase 3** — pass context pointer; AGI abstraction aligns with harness mock layer.
 
 ---

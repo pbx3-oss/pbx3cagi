@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -26,33 +27,17 @@
 #include "cagi.h"
 #include "bsd_compat.h"
 #include <sys/wait.h>
-#include "sqlite3.h"
 
 AGI_TOOLS agi;
 AGI_CMD_RESULT res;
 
 const char *qlogFile = QLOG;
 char abstimeout[32] = {'\0'};             // ABSTIMEOUT for any call
-char rescols[MAX_SQL_COLS][MAX_SQL_CLEN]; // result columns
 char eparm[64] = {'\0'};                  // Used by the Directory function (*57*)
-char **myargv;                            // AGI arguments
 char vmsg[255] = {'\0'};                  // console mesage buffer
-char uniqueid[64] = {'\0'};               // unique call id from Asterisk
-char callerid[MAX_EXT_LEN] = {'\0'};      // CLI number from Asterisk
-char calleridname[MAX_EXT_LEN] = {'\0'};  // CLI name from Asterisk
-char channel[64] = {'\0'};                // AGI channel
-char chanId[64] = {'\0'};                 // True SIP endpoint ID of the calling channel
 char clidline[MAX_EXT_LEN] = {'\0'};      // CLI from trunk DB entry
 char clidphone[MAX_EXT_LEN] = {'\0'};     // CLI from phone DB entry
 char clidstrng[MAX_EXT_LEN] = {'\0'};     // CLI build string for sprintf
-char context[MAX_CLUSTER_LEN] = {'\0'};   // The curent context
-char agi_dnid[MAX_EXT_LEN] = {'\0'};          // agi_dnid from Asterisk
-char extension[MAX_EXT_LEN] = {'\0'};     // agi_extension from Asterisk
-char rdnis[MAX_EXT_LEN] = {'\0'};         // agi_rdnis from Asterisk
-char myCluster[MAX_CLUSTER_LEN] = {'\0'}; // The cluster(Tenant) assigned to this call
-char myClusterclid[MAX_EXT_LEN] = {'\0'}; // The cluster(Tenant) CLID
-char myClusterContext[MAX_CLUSTER_LEN] = "qrxvtmny";
-char myClusterId[3] = {'\0'};        // The cluster(Tenant) ID
 char routeclassoverride[8] = {'\0'}; // Holiday scheduler route class override
 char routeoverride[32] = {'\0'};     // Holiday scheduler route override
 char routeclassopen[8] = {'\0'};     // open routeclass
@@ -62,15 +47,35 @@ char closeroute[32] = {'\0'};        // closed route
 char myQuery[255] = {'\0'};          // regular SQL query
 char setcdrcmd[64] = "CHANNEL(accountcode)=";
 
-
 long debug = FALSE; // debug on/off
 int abstimeint = 14400; // default (4 hours)
-int myargc;             // numargs
-int switchdig;          // function number
-int callee_is_local = FALSE;
-int caller_is_local = FALSE;
-int rdnis_is_local = FALSE;
-int rdnis_is_set = FALSE;
+
+/* Phase 1.1: call + argv state live in structs; macros preserve old names. */
+agi_call_ctx_t g_call = {
+    .myClusterContext = "qrxvtmny",
+};
+agi_parms_t g_parms;
+
+#define uniqueid           (g_call.uniqueid)
+#define callerid           (g_call.callerid)
+#define calleridname       (g_call.calleridname)
+#define channel            (g_call.channel)
+#define chanId             (g_call.chanId)
+#define context            (g_call.context)
+#define agi_dnid           (g_call.agi_dnid)
+#define extension          (g_call.extension)
+#define rdnis              (g_call.rdnis)
+#define myCluster          (g_call.myCluster)
+#define myClusterclid      (g_call.myClusterclid)
+#define myClusterContext   (g_call.myClusterContext)
+#define myClusterId        (g_call.myClusterId)
+#define callee_is_local    (g_call.callee_is_local)
+#define caller_is_local    (g_call.caller_is_local)
+#define rdnis_is_local     (g_call.rdnis_is_local)
+#define rdnis_is_set       (g_call.rdnis_is_set)
+#define myargv             (g_parms.argv)
+#define myargc             (g_parms.argc)
+#define switchdig          (g_parms.switchdig)
 
 void sig_handler(int signum)
 {
@@ -105,52 +110,6 @@ void DebugFunctionMsg(const char *thisFunc, const char *thisMsg)
     return;
 }
 
-cluster_cfg_t g_cluster_cfg;
-/* Prepared SELECT helpers: sql must contain exactly one ? (bind1) or two ? in order (bind2). */
-static char *sqlQueryBind1(const char *sql, const char *arg1);
-static char *sqlQueryBind2(const char *sql, const char *arg1, const char *arg2);
-
-static void cluster_cfg_apply_defaults(cluster_cfg_t *cfg)
-{
-    memset(cfg, 0, sizeof(*cfg));
-    cfg->abstimeout_sec = 14400;
-    strlcpy(cfg->voipmax_str, "30", sizeof(cfg->voipmax_str));
-    strlcpy(cfg->callrecord_1, "None", sizeof(cfg->callrecord_1));
-    strlcpy(cfg->allowhashxfer, "enabled", sizeof(cfg->allowhashxfer));
-    strlcpy(cfg->playbeep, "YES", sizeof(cfg->playbeep));
-    strlcpy(cfg->playbusy, "YES", sizeof(cfg->playbusy));
-    strlcpy(cfg->playcongested, "YES", sizeof(cfg->playcongested));
-    strlcpy(cfg->playtransfer, "YES", sizeof(cfg->playtransfer));
-    strlcpy(cfg->voiceinstr, "YES", sizeof(cfg->voiceinstr));
-    strlcpy(cfg->int_ring_delay, "20", sizeof(cfg->int_ring_delay));
-    strlcpy(cfg->maxin_str, "30", sizeof(cfg->maxin_str));
-    strlcpy(cfg->ringdelay_str, "20", sizeof(cfg->ringdelay_str));
-    strlcpy(cfg->lterm_str, "NO", sizeof(cfg->lterm_str));
-    strlcpy(cfg->cfwd_progress, "enabled", sizeof(cfg->cfwd_progress));
-    strlcpy(cfg->cfwd_answer, "enabled", sizeof(cfg->cfwd_answer));
-    strlcpy(cfg->ivr_key_wait, "6", sizeof(cfg->ivr_key_wait));
-    strlcpy(cfg->ivr_digit_wait_str, "6000", sizeof(cfg->ivr_digit_wait_str));
-    strlcpy(cfg->syspass, "4444", sizeof(cfg->syspass));
-    strlcpy(cfg->spy_pass, "3333", sizeof(cfg->spy_pass));
-    strlcpy(cfg->chanmax_str, "3", sizeof(cfg->chanmax_str));
-    strlcpy(cfg->usemohcustom, "NO", sizeof(cfg->usemohcustom));
-    strlcpy(cfg->masteroclo, "AUTO", sizeof(cfg->masteroclo));
-    cfg->oclo[0] = '\0';
-    cfg->routeoverride[0] = '\0';
-}
-
-static sqlite3 *g_sqlite_handle = NULL;
-
-static const char *sqlitedb_path(void)
-{
-    const char *env = getenv("PBX3CAGI_SQLITE_DB");
-    if (env != NULL && env[0] != '\0')
-    {
-        return env;
-    }
-    return SQLITEDB;
-}
-
 /* Fleet Phase A: dial PSTN via fixed Egress trunk (no path failover on node). */
 static int pbx3_fleet_mode(void)
 {
@@ -176,266 +135,74 @@ static int pbx3_fleet_mode(void)
     return 0;
 }
 
-static void sqlCloseSharedHandle(void)
+
+/* Phase 2.1 — command table (replaces the big switch in main). */
+typedef void (*agi_cmd_fn)(void);
+
+typedef struct {
+    int case_num;          /* historic switchdig / *NN feature code */
+    const char *name;      /* named AGI cmd (NULL = feature-code only) */
+    agi_cmd_fn handler;
+} agi_cmd_entry_t;
+
+static void cmd_OutTrunk(void) { OutTrunk(PARM_KEY); }
+static void cmd_Dial(void) { PrepDial(PARM_KEY, PARM_PM1, "", ""); }
+static void cmd_IVR(void) { IVR(PARM_KEY); }
+
+static const agi_cmd_entry_t agi_cmd_table[] = {
+    { 1, "OutTrunk", cmd_OutTrunk },
+    { 2, "OutRoute", OutRoute },
+    { 3, "LepDial", LepDial },
+    { 4, "Ingress", Ingress },
+    { 5, "Dial", cmd_Dial },
+    { 6, "IVR", cmd_IVR },
+    { 7, "OutQmt", OutQmt },
+    { 8, "PostDial", PostDial },
+    { 18, NULL, CFVMailSet },
+    { 19, NULL, CFVMailSet },
+    { 20, NULL, CFVMailToggle },
+    { 21, NULL, CFToggle },
+    { 22, NULL, CFToggle },
+    { 23, NULL, CFOff },
+    { 26, NULL, SetRingDelay },
+    { 27, NULL, FollowMe },
+    { 60, NULL, RecGreet },
+    { 63, NULL, AgentPause },
+    { 64, NULL, AgentUnpause },
+    { 65, NULL, AgentLogin },
+    { 66, NULL, AgentLogout },
+    /* ChanSpy*: still need MultiTenant work */
+    { 67, NULL, ChanSpyWhisper },
+    { 68, NULL, ChanSpy },
+};
+
+static int agi_cmd_lookup_name(const char *name)
 {
-    if (g_sqlite_handle != NULL)
-    {
-        sqlite3_close(g_sqlite_handle);
-        g_sqlite_handle = NULL;
-    }
-}
-
-static sqlite3 *sqlGetSharedHandle(void)
-{
-    int retval;
-
-    if (g_sqlite_handle != NULL)
-    {
-        return g_sqlite_handle;
-    }
-
-    retval = sqlite3_open(sqlitedb_path(), &g_sqlite_handle);
-    if (retval)
-    {
-        if (g_sqlite_handle != NULL)
-        {
-            sqlite3_close(g_sqlite_handle);
-            g_sqlite_handle = NULL;
-        }
-        snprintf(vmsg, sizeof(vmsg), "Database connection failed, retval is %i", retval);
-        DebugFunctionMsg(__FUNCTION__, vmsg);
-        return NULL;
-    }
-
-    atexit(sqlCloseSharedHandle);
-    return g_sqlite_handle;
-}
-
-static void escape_sql_literal(char *out, size_t outlen, const char *in)
-{
-    size_t o = 0;
     size_t i;
 
-    for (i = 0; in[i] != '\0' && o + 1 < outlen; i++)
-    {
-        if (in[i] == '\'')
-        {
-            if (o + 2 >= outlen)
-            {
-                break;
-            }
-            out[o++] = '\'';
-            out[o++] = '\'';
-        }
-        else
-        {
-            out[o++] = in[i];
+    if (name == NULL) {
+        return 0;
+    }
+    for (i = 0; i < sizeof(agi_cmd_table) / sizeof(agi_cmd_table[0]); i++) {
+        if (agi_cmd_table[i].name != NULL && !strcmp(agi_cmd_table[i].name, name)) {
+            return agi_cmd_table[i].case_num;
         }
     }
-    out[o] = '\0';
+    return 0;
 }
 
-int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg)
+static void agi_cmd_dispatch(int case_num)
 {
-    char esc[128];
-    char query[1400];
-    sqlite3 *handle = NULL;
-    sqlite3_stmt *stmt = NULL;
-    int retval;
-    int i;
+    size_t i;
 
-    cluster_cfg_apply_defaults(cfg);
-
-    if (cluster_pkey == NULL || cluster_pkey[0] == '\0')
-    {
-        DebugFunctionMsg(__FUNCTION__, "load_cluster_cfg: empty cluster pkey");
-        return -1;
-    }
-
-    escape_sql_literal(esc, sizeof(esc), cluster_pkey);
-    snprintf(
-        query, sizeof(query),
-        "SELECT abstimeout, voip_max, allow_hash_xfer, play_beep, play_busy, play_congested, "
-        "play_transfer, voice_instr, bounce_alert, blind_busy, int_ring_delay, maxin, ringdelay, lterm, "
-        "cfwd_progress, cfwd_answer, ivr_key_wait, ivr_digit_wait, syspass, spy_pass, dynamicfeatures, "
-        "clusterclid, chanmax, usemohcustom, callrecord_1, masteroclo, oclo, routeoverride, "
-        "fqdn, cname, domain, shortuid "
-        "FROM cluster WHERE pkey='%s' OR shortuid='%s'",
-        esc, esc);
-
-    handle = sqlGetSharedHandle();
-    if (handle == NULL)
-    {
-        DebugFunctionMsg(__FUNCTION__, "load_cluster_cfg: sqlite open failed");
-        return -1;
-    }
-
-    for (i = 0; i < 3; i++)
-    {
-        retval = sqlite3_prepare_v2(handle, query, -1, &stmt, NULL);
-        if (retval == SQLITE_OK)
-        {
-            break;
-        }
-        if (retval == SQLITE_LOCKED || retval == SQLITE_BUSY)
-        {
-            AGITool_exec(&agi, &res, "Wait", "0.5");
-        }
-        else
-        {
-            break;
+    for (i = 0; i < sizeof(agi_cmd_table) / sizeof(agi_cmd_table[0]); i++) {
+        if (agi_cmd_table[i].case_num == case_num) {
+            agi_cmd_table[i].handler();
+            return;
         }
     }
-
-    if (retval != SQLITE_OK)
-    {
-        snprintf(vmsg, sizeof(vmsg), "load_cluster_cfg: prepare failed %i", retval);
-        DebugFunctionMsg(__FUNCTION__, vmsg);
-        return -1;
-    }
-
-    retval = sqlite3_step(stmt);
-    if (retval != SQLITE_ROW)
-    {
-        snprintf(vmsg, sizeof(vmsg), "load_cluster_cfg: no cluster row for pkey=%s", cluster_pkey);
-        DebugFunctionMsg(__FUNCTION__, vmsg);
-        sqlite3_finalize(stmt);
-        return -1;
-    }
-
-    cfg->abstimeout_sec = sqlite3_column_type(stmt, 0) == SQLITE_NULL ? 14400 : sqlite3_column_int(stmt, 0);
-    {
-        int vm = sqlite3_column_type(stmt, 1) == SQLITE_NULL ? 30 : sqlite3_column_int(stmt, 1);
-        snprintf(cfg->voipmax_str, sizeof(cfg->voipmax_str), "%d", vm);
-    }
-    {
-        const unsigned char *t = sqlite3_column_text(stmt, 2);
-        strlcpy(cfg->allowhashxfer, t ? (const char *)t : "enabled", sizeof(cfg->allowhashxfer));
-    }
-    {
-        int v = sqlite3_column_type(stmt, 3) == SQLITE_NULL ? 1 : sqlite3_column_int(stmt, 3);
-        strlcpy(cfg->playbeep, v ? "YES" : "NO", sizeof(cfg->playbeep));
-    }
-    {
-        int v = sqlite3_column_type(stmt, 4) == SQLITE_NULL ? 1 : sqlite3_column_int(stmt, 4);
-        strlcpy(cfg->playbusy, v ? "YES" : "NO", sizeof(cfg->playbusy));
-    }
-    {
-        int v = sqlite3_column_type(stmt, 5) == SQLITE_NULL ? 1 : sqlite3_column_int(stmt, 5);
-        strlcpy(cfg->playcongested, v ? "YES" : "NO", sizeof(cfg->playcongested));
-    }
-    {
-        int v = sqlite3_column_type(stmt, 6) == SQLITE_NULL ? 1 : sqlite3_column_int(stmt, 6);
-        strlcpy(cfg->playtransfer, v ? "YES" : "NO", sizeof(cfg->playtransfer));
-    }
-    {
-        int vi = sqlite3_column_type(stmt, 7) == SQLITE_NULL ? 1 : sqlite3_column_int(stmt, 7);
-        strlcpy(cfg->voiceinstr, (vi == 0) ? "NO" : "YES", sizeof(cfg->voiceinstr));
-    }
-    {
-        const unsigned char *t = sqlite3_column_text(stmt, 8);
-        strlcpy(cfg->bounce_alert, t ? (const char *)t : "", sizeof(cfg->bounce_alert));
-    }
-    {
-        const unsigned char *t = sqlite3_column_text(stmt, 9);
-        strlcpy(cfg->blind_busy, t ? (const char *)t : "", sizeof(cfg->blind_busy));
-    }
-    {
-        int v = sqlite3_column_type(stmt, 10) == SQLITE_NULL ? 20 : sqlite3_column_int(stmt, 10);
-        snprintf(cfg->int_ring_delay, sizeof(cfg->int_ring_delay), "%d", v);
-    }
-    {
-        int v = sqlite3_column_type(stmt, 11) == SQLITE_NULL ? 30 : sqlite3_column_int(stmt, 11);
-        snprintf(cfg->maxin_str, sizeof(cfg->maxin_str), "%d", v);
-    }
-    {
-        int v = sqlite3_column_type(stmt, 12) == SQLITE_NULL ? 20 : sqlite3_column_int(stmt, 12);
-        snprintf(cfg->ringdelay_str, sizeof(cfg->ringdelay_str), "%d", v);
-    }
-    {
-        int lt = sqlite3_column_type(stmt, 13) == SQLITE_NULL ? 0 : sqlite3_column_int(stmt, 13);
-        strlcpy(cfg->lterm_str, lt ? "YES" : "NO", sizeof(cfg->lterm_str));
-    }
-    {
-        const unsigned char *t = sqlite3_column_text(stmt, 14);
-        strlcpy(cfg->cfwd_progress, t ? (const char *)t : "enabled", sizeof(cfg->cfwd_progress));
-    }
-    {
-        const unsigned char *t = sqlite3_column_text(stmt, 15);
-        strlcpy(cfg->cfwd_answer, t ? (const char *)t : "enabled", sizeof(cfg->cfwd_answer));
-    }
-    {
-        int v = sqlite3_column_type(stmt, 16) == SQLITE_NULL ? 6 : sqlite3_column_int(stmt, 16);
-        snprintf(cfg->ivr_key_wait, sizeof(cfg->ivr_key_wait), "%d", v);
-    }
-    {
-        int v = sqlite3_column_type(stmt, 17) == SQLITE_NULL ? 6000 : sqlite3_column_int(stmt, 17);
-        snprintf(cfg->ivr_digit_wait_str, sizeof(cfg->ivr_digit_wait_str), "%d", v);
-    }
-    {
-        const unsigned char *t = sqlite3_column_text(stmt, 18);
-        strlcpy(cfg->syspass, t ? (const char *)t : "4444", sizeof(cfg->syspass));
-    }
-    {
-        const unsigned char *t = sqlite3_column_text(stmt, 19);
-        strlcpy(cfg->spy_pass, t ? (const char *)t : "3333", sizeof(cfg->spy_pass));
-    }
-    {
-        const unsigned char *t = sqlite3_column_text(stmt, 20);
-        strlcpy(cfg->dynamicfeatures, t ? (const char *)t : "", sizeof(cfg->dynamicfeatures));
-    }
-    {
-        const unsigned char *t = sqlite3_column_text(stmt, 21);
-        strlcpy(cfg->clusterclid, t ? (const char *)t : "", sizeof(cfg->clusterclid));
-    }
-    {
-        int v = sqlite3_column_type(stmt, 22) == SQLITE_NULL ? 3 : sqlite3_column_int(stmt, 22);
-        snprintf(cfg->chanmax_str, sizeof(cfg->chanmax_str), "%d", v);
-    }
-    {
-        const unsigned char *t = sqlite3_column_text(stmt, 23);
-        strlcpy(cfg->usemohcustom, t ? (const char *)t : "NO", sizeof(cfg->usemohcustom));
-    }
-    {
-        const unsigned char *t = sqlite3_column_text(stmt, 24);
-        strlcpy(cfg->callrecord_1, t ? (const char *)t : "None", sizeof(cfg->callrecord_1));
-    }
-    {
-        const unsigned char *t = sqlite3_column_text(stmt, 25);
-        strlcpy(cfg->masteroclo, t ? (const char *)t : "AUTO", sizeof(cfg->masteroclo));
-    }
-    {
-        const unsigned char *t = sqlite3_column_text(stmt, 26);
-        strlcpy(cfg->oclo, t ? (const char *)t : "", sizeof(cfg->oclo));
-    }
-    {
-        const unsigned char *t = sqlite3_column_text(stmt, 27);
-        strlcpy(cfg->routeoverride, t ? (const char *)t : "", sizeof(cfg->routeoverride));
-    }
-    {
-        /* Prefer fqdn, then cname, else shortuid.domain (phones register as user@tenant.fqdn). */
-        const unsigned char *fq = sqlite3_column_text(stmt, 28);
-        const unsigned char *cn = sqlite3_column_text(stmt, 29);
-        const unsigned char *dom = sqlite3_column_text(stmt, 30);
-        const unsigned char *su = sqlite3_column_text(stmt, 31);
-        cfg->fqdn[0] = '\0';
-        if (fq != NULL && fq[0] != '\0')
-        {
-            strlcpy(cfg->fqdn, (const char *)fq, sizeof(cfg->fqdn));
-        }
-        else if (cn != NULL && cn[0] != '\0')
-        {
-            strlcpy(cfg->fqdn, (const char *)cn, sizeof(cfg->fqdn));
-        }
-        else if (su != NULL && su[0] != '\0' && dom != NULL && dom[0] != '\0')
-        {
-            snprintf(cfg->fqdn, sizeof(cfg->fqdn), "%s.%s", (const char *)su, (const char *)dom);
-        }
-    }
-
-    cfg->loaded = 1;
-    sqlite3_finalize(stmt);
-    return 0;
+    snprintf(vmsg, sizeof(vmsg), "Function-call %i does not exist in the core", case_num);
+    DebugFunctionMsg(__FUNCTION__, vmsg);
 }
 
 int main(int argc, char **argv)
@@ -443,11 +210,6 @@ int main(int argc, char **argv)
 
     char numwork[32] = {'\0'};
     char chardig[4] = {'\0'};
-
-    char *cmdTab[11] =
-        {"OutTrunk", "OutRoute", "LepDial", "Ingress", "Dial", "IVR", "OutQmt", "PostDial"};
-        
-    int i = 0;
 
     myargv = argv; // agi srgs
     myargc = argc; // agi arg count
@@ -562,18 +324,9 @@ int main(int argc, char **argv)
         strlcpy(chardig, numwork + 1, sizeof(chardig));
         switchdig = atoi(chardig);
     }
-    // Digitise the cmd sequences (there are only 11 - see the cmdTab)
     else
     {
-        while (i < 11)
-        {
-            if (!strcmp(*(cmdTab + i), *(argv + 1)))
-            {
-                switchdig = i + 1;
-                break;
-            }
-            i++;
-        }
+        switchdig = agi_cmd_lookup_name(argv[1]);
     }
 
     if (debug)
@@ -604,102 +357,12 @@ int main(int argc, char **argv)
         }
         snprintf(vmsg, sizeof(vmsg), "Cluster is %s", myCluster);
         DebugFunctionMsg(__FUNCTION__, vmsg);
-//        snprintf(vmsg, sizeof(vmsg), "ClusterId is %s", myClusterId);
-//        DebugFunctionMsg(__FUNCTION__, vmsg);
     }
 
-/*
- *	set MOH
- */
 	setMoh();
 
-/*
- *   the input command now has an integer number assigned to it (switchdig)
- *   so we can just use a switch to  select the command processor
- */
+    agi_cmd_dispatch(switchdig);
 
-    switch (switchdig)
-    {
-
-    case 1:
-        OutTrunk(PARM_KEY);
-        break;
-    case 2:
-        OutRoute();     // routed dial to a peer
-        break;
-    case 3:
-        LepDial();      // local endpoint (extension) dial
-        break;
-    case 4:
-        Ingress();      // inbound call from peer
-        break;
-    case 5:
-        /* Direct dial, or Phase E Q*: PM1=queue → PrepDial set-and-return (PBX3_DIAL) */
-        PrepDial(PARM_KEY,PARM_PM1,"","");
-        break;
-    case 6:
-        IVR(PARM_KEY);          // IVR menus
-        break;
-    case 7:
-        OutQmt();       // Queuemetrics outbound stuff 
-        break;
-    case 8:
-        /* Phase G: after dialplan Dial(${PBX3_DIAL}) — CFBS / VM / bounce */
-        PostDial();
-        break;
-
-
-    case 18:
-        CFVMailSet();
-        break;
-    case 19:
-        CFVMailSet();
-        break;
-    case 20:
-        CFVMailToggle();
-        break;
-    case 21:
-        CFToggle();
-        break;
-    case 22:
-        CFToggle();
-        break;
-    case 23:
-        CFOff();
-        break;
-    case 26:
-        SetRingDelay();
-        break;
-    case 27:
-        FollowMe();
-        break;
-    case 60:
-        RecGreet();
-        break;
-    case 63:
-        AgentPause();
-        break;
-    case 64:
-        AgentUnpause();
-        break;
-    case 65:
-        AgentLogin();
-        break;
-    case 66:
-        AgentLogout();
-        break;
-// These need work for MultiTenant
-    case 67:
-        ChanSpyWhisper();
-        break;
-    case 68:
-        ChanSpy();
-        break;
-    default:
-        sprintf(vmsg, "Function-call %i does not exist in the core", switchdig);
-        DebugFunctionMsg(__FUNCTION__, vmsg);
-        break;
-    }
     AGITool_Destroy(&agi);
     return 0;
 }
@@ -2875,110 +2538,6 @@ void DBDel(char *family, char *key)
     DebugFunctionTrace(__FUNCTION__);
 
     AGITool_database_del(&agi, &res, family, key);
-}
-
-static char *sqlQueryBindInternal(const char *sql, const char *arg1, const char *arg2, int bind_count)
-{
-    char *pVal = &rescols[0][0];
-    int retval, i;
-
-    DebugFunctionTrace(__FUNCTION__);
-
-    sqlite3 *handle = sqlGetSharedHandle();
-    if (handle == NULL)
-    {
-        return "-1";
-    }
-
-    if (debug)
-    {
-        snprintf(vmsg, sizeof(vmsg), "Executing prepared SQL %s", sql);
-        DebugFunctionMsg(__FUNCTION__, vmsg);
-    }
-
-    sqlite3_stmt *stmt = NULL;
-    for (i = 0; i < 3; i++)
-    {
-        retval = sqlite3_prepare_v2(handle, sql, -1, &stmt, 0);
-        if (retval == SQLITE_OK)
-        {
-            break;
-        }
-        if (retval == SQLITE_LOCKED || retval == SQLITE_BUSY)
-        {
-            DebugFunctionMsg(__FUNCTION__, "Database LOCK! retry in .5s");
-            AGITool_exec(&agi, &res, "Wait", "0.5");
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    if (retval != SQLITE_OK)
-    {
-        snprintf(vmsg, sizeof(vmsg), "Prepared SQL failed, retval=%i, sql=%s", retval, sql);
-        DebugFunctionMsg(__FUNCTION__, vmsg);
-        return pVal;
-    }
-
-    if (bind_count >= 1)
-    {
-        retval = sqlite3_bind_text(stmt, 1, arg1 ? arg1 : "", -1, SQLITE_TRANSIENT);
-        if (retval != SQLITE_OK)
-        {
-            snprintf(vmsg, sizeof(vmsg), "Bind #1 failed, retval=%i, sql=%s", retval, sql);
-            DebugFunctionMsg(__FUNCTION__, vmsg);
-            sqlite3_finalize(stmt);
-            return pVal;
-        }
-    }
-    if (bind_count >= 2)
-    {
-        retval = sqlite3_bind_text(stmt, 2, arg2 ? arg2 : "", -1, SQLITE_TRANSIENT);
-        if (retval != SQLITE_OK)
-        {
-            snprintf(vmsg, sizeof(vmsg), "Bind #2 failed, retval=%i, sql=%s", retval, sql);
-            DebugFunctionMsg(__FUNCTION__, vmsg);
-            sqlite3_finalize(stmt);
-            return pVal;
-        }
-    }
-
-    retval = sqlite3_step(stmt);
-
-    if (debug)
-    {
-        snprintf(vmsg, sizeof(vmsg), "Prepared SQL returned %i columns", sqlite3_column_count(stmt));
-        DebugFunctionMsg(__FUNCTION__, vmsg);
-    }
-
-    if (sqlite3_column_count(stmt) > 0)
-    {
-        for (i = 0; i < sqlite3_column_count(stmt); i++)
-        {
-            const unsigned char *t = sqlite3_column_text(stmt, i);
-            strlcpy(rescols[i], t ? (const char *)t : "", sizeof(rescols[i]));
-            if (debug)
-            {
-                snprintf(vmsg, sizeof(vmsg), "Prepared col[%i] value='%s'", i, rescols[i]);
-                DebugFunctionMsg(__FUNCTION__, vmsg);
-            }
-        }
-    }
-
-    sqlite3_finalize(stmt);
-    return pVal;
-}
-
-static char *sqlQueryBind1(const char *sql, const char *arg1)
-{
-    return sqlQueryBindInternal(sql, arg1, NULL, 1);
-}
-
-static char *sqlQueryBind2(const char *sql, const char *arg1, const char *arg2)
-{
-    return sqlQueryBindInternal(sql, arg1, arg2, 2);
 }
 
 /***********************************************************************
