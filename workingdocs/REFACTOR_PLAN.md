@@ -128,12 +128,12 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 - Lock-retry still uses AGI `Wait` (same behaviour); module takes `extern` `agi`/`res`/`debug`/`vmsg` for that.
 - Gate: `make test` PASS. Next: **2.3** init extract, or **Phase 3** pass pointers / drop macros.
 
-**2.3 Extract “call context” initialisation**
+**2.3 Extract “call context” initialisation** — **done 2026-07-25**
 
-- Move the block in `main()` that fills call identity from AGI vars (`callerid`, `extension`, `rdnis`, locality flags, etc.), resolves **tenant/cluster from dialplan argv** (`PARM_CLST` / `myargv[3]`, with fallback to `agi_context`), sets accountcode / `load_cluster_cfg`, etc. into one function, e.g. `agi_init_call_context(agi_call_ctx_t *ctx, int argc, char **argv)`.
-- There is **no** `SetCluster()` anymore — cluster is passed in from `extensions.conf` (GenAst) as an AGI arg; this phase only extracts that inline setup.
-- `main()` becomes: AGITool_Init → agi_init_call_context → setMoh → command table dispatch → AGITool_Destroy.
-- Outcome: main() is a short, readable sequence; context setup is one place.
+- Added `agi_init_call_context(agi_call_ctx_t *ctx, int argc, char **argv)`: AGI identity vars, locality flags, **PARM_CLST → myCluster** (fallback `agi_context`), accountcode, `load_cluster_cfg` / `abstimeint`.
+- `main()` is now: AGITool_Init → DEBUG → init → argc guards → switchdig → setMoh → `agi_cmd_dispatch` → Destroy.
+- No `SetCluster()`. Still uses Phase 1.1 name macros inside init (must pass `&g_call`); Phase 3 drops macros so `ctx->` works.
+- Gate: `make test` PASS. Next: **Phase 3** (pass context / drop macros), or Phase 4 optional splits.
 
 ---
 
@@ -177,8 +177,8 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 5. **Phase 1.1** (struct for call context) – **done 2026-07-25** (`g_call` / `g_parms` + name macros; `make test` green).
 6. **Phase 2.1** (command table) – **done 2026-07-25** (`agi_cmd_table` + dispatch; `make test` green).
 7. **Phase 2.2** (DB module) – **done 2026-07-25** (`agi_sqlite.c`; `make test` green).
-8. **Phase 2.3** (init_call_context). **Next** (or Phase 3).
-9. **Phase 3** — pass context pointer; AGI abstraction aligns with harness mock layer.
+8. **Phase 2.3** (init_call_context) – **done 2026-07-25** (`agi_init_call_context`; `make test` green).
+9. **Phase 3** — pass context pointer; AGI abstraction aligns with harness mock layer. **Next**.
 
 ---
 

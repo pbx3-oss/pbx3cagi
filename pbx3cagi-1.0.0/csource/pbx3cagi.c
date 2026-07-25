@@ -205,24 +205,23 @@ static void agi_cmd_dispatch(int case_num)
     DebugFunctionMsg(__FUNCTION__, vmsg);
 }
 
-int main(int argc, char **argv)
+/*
+ * Phase 2.3 — AGI env + dialplan argv → call/tenant context.
+ * Cluster comes from extensions.conf (PARM_CLST); no SetCluster().
+ *
+ * While Phase 1.1 name macros are active, field tokens like `uniqueid` expand to
+ * `g_call.uniqueid`, so this writes via those macros. Callers must pass &g_call
+ * until Phase 3 drops the macros and uses ctx-> directly.
+ */
+void agi_init_call_context(agi_call_ctx_t *ctx, int argc, char **argv)
 {
+    const char *log_cmd = "";
+    const char *log_clst = "";
 
-    char numwork[32] = {'\0'};
-    char chardig[4] = {'\0'};
+    (void)ctx; /* == &g_call via macros today */
 
-    myargv = argv; // agi srgs
-    myargc = argc; // agi arg count
-
-    AGITool_Init(&agi);
-
-    AGITool_get_variable(&agi, &res, "DEBUG"); // DEBUG is an Asterisk variable set from the console
-    if (!strcmp(res.data, "ON"))
-    {
-        debug = TRUE;
-    }
-
-    DebugFunctionTrace(__FUNCTION__);
+    g_parms.argv = argv;
+    g_parms.argc = argc;
 
     strlcpy(uniqueid, AGITool_ListGetVal(agi.agi_vars, "agi_uniqueid"), sizeof(uniqueid));
     strlcpy(callerid, AGITool_ListGetVal(agi.agi_vars, "agi_callerid"), sizeof(callerid));
@@ -233,39 +232,32 @@ int main(int argc, char **argv)
     strlcpy(channel, AGITool_ListGetVal(agi.agi_vars, "agi_channel"), sizeof(channel));
     strlcpy(agi_dnid, AGITool_ListGetVal(agi.agi_vars, "agi_dnid"), sizeof(agi_dnid));
 
-	
-    if (isdigit(callerid[0])) {
+    if (isdigit((unsigned char)callerid[0])) {
         if (strlen(callerid) < 6) {
             caller_is_local = TRUE;
-        }
-        else {
-            if (strlen(callerid) == 8) {
-                caller_is_local = TRUE;
-            }
+        } else if (strlen(callerid) == 8) {
+            caller_is_local = TRUE;
         }
     }
 
-    if (isdigit(extension[0])) {
+    if (isdigit((unsigned char)extension[0])) {
         if (strlen(extension) < 6) {
             callee_is_local = TRUE;
-        }
-        else {
-            if (strlen(extension) == 8) {
-                callee_is_local = TRUE;
-            }
+        } else if (strlen(extension) == 8) {
+            callee_is_local = TRUE;
         }
     }
 
-	
-	if (strcmp(rdnis, "unknown")) { 
-		if (strlen(rdnis) < 6) {
-			rdnis_is_local = TRUE;
-		}
-		rdnis_is_set = TRUE;
-	}
+    if (strcmp(rdnis, "unknown")) {
+        if (strlen(rdnis) < 6) {
+            rdnis_is_local = TRUE;
+        }
+        rdnis_is_set = TRUE;
+    }
 
-    if (argc > 3 && myargv[3] != NULL && PARM_CLST[0] != '\0') {
-        strlcpy(myCluster, PARM_CLST, sizeof(myCluster));
+    /* GenAst passes tenant as AGI argv[3]; fall back to agi_context. */
+    if (argc > 3 && argv[3] != NULL && argv[3][0] != '\0') {
+        strlcpy(myCluster, argv[3], sizeof(myCluster));
     } else {
         strlcpy(myCluster, context, sizeof(myCluster));
     }
@@ -276,61 +268,61 @@ int main(int argc, char **argv)
     }
 
     strlcat(setcdrcmd, myCluster, sizeof(setcdrcmd));
-
     AGITool_exec(&agi, &res, "Set", setcdrcmd);
 
-    /* Before argc==1 / argc<2 exits: only read argv slots that exist. */
-    {
-        const char *log_cmd = "";
-        const char *log_clst = "";
-        if (argc > 1 && myargv[1] != NULL) {
-            log_cmd = PARM_CMD;
-        }
-        if (argc > 3 && myargv[3] != NULL) {
-            log_clst = PARM_CLST;
-        }
-        snprintf(vmsg, sizeof(vmsg),
-                 "Phase Main effective_cluster=%s agi_context=%s argv PARM_CMD=%s PARM_CLST=%s",
-                 myCluster, context, log_cmd, log_clst);
+    if (argc > 1 && argv[1] != NULL) {
+        log_cmd = argv[1];
     }
+    if (argc > 3 && argv[3] != NULL) {
+        log_clst = argv[3];
+    }
+    snprintf(vmsg, sizeof(vmsg),
+             "Phase Main effective_cluster=%s agi_context=%s argv PARM_CMD=%s PARM_CLST=%s",
+             myCluster, context, log_cmd, log_clst);
     DebugFunctionMsg(__FUNCTION__, vmsg);
 
     load_cluster_cfg(myCluster, &g_cluster_cfg);
     abstimeint = g_cluster_cfg.abstimeout_sec;
+}
 
-    // No parameters means the special Queues "Local" backcall
-    if (argc == 1)
-    {
+int main(int argc, char **argv)
+{
+    char numwork[32] = {'\0'};
+    char chardig[4] = {'\0'};
+
+    AGITool_Init(&agi);
+
+    AGITool_get_variable(&agi, &res, "DEBUG");
+    if (!strcmp(res.data, "ON")) {
+        debug = TRUE;
+    }
+
+    DebugFunctionTrace(__FUNCTION__);
+
+    agi_init_call_context(&g_call, argc, argv);
+
+    /* No parameters: Queues "Local" backcall */
+    if (argc == 1) {
         SetRecord("Qexec", "Inbound");
-
-
-
-
         return 0;
     }
-    // check whether a function was specified
-    if (argc < 2)
-    {
+    if (argc < 2) {
         DebugFunctionMsg(__FUNCTION__, "Performed an AGI call without specifying a function.");
         return 1;
     }
-    // if this is a feature code dial...
-    // Digitize the Feature codes, answer the call and Insert a wait to allow the line to settle.
-    if (!strncmp(argv[1], "*", 1))
-    {
+
+    /* Feature codes (*NN): answer, settle, digitize. Else named command. */
+    if (!strncmp(argv[1], "*", 1)) {
         AGITool_answer(&agi, &res);
         AGITool_exec(&agi, &res, "Wait", "0.5");
-        strlcpy(numwork, *(argv + 1), sizeof(numwork));
+        strlcpy(numwork, argv[1], sizeof(numwork));
         strlcpy(chardig, numwork + 1, sizeof(chardig));
         switchdig = atoi(chardig);
-    }
-    else
-    {
+    } else {
         switchdig = agi_cmd_lookup_name(argv[1]);
     }
 
-    if (debug)
-    {
+    if (debug) {
         snprintf(vmsg, sizeof(vmsg), "switchdig is %i", switchdig);
         DebugFunctionMsg(__FUNCTION__, vmsg);
         snprintf(vmsg, sizeof(vmsg), "PARM_CMD is %s", PARM_CMD);
@@ -359,10 +351,8 @@ int main(int argc, char **argv)
         DebugFunctionMsg(__FUNCTION__, vmsg);
     }
 
-	setMoh();
-
+    setMoh();
     agi_cmd_dispatch(switchdig);
-
     AGITool_Destroy(&agi);
     return 0;
 }

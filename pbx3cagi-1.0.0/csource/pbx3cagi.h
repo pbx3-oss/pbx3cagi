@@ -120,6 +120,9 @@ extern agi_parms_t g_parms;
 
 int AuthenticatePassword(const char *password_plain);
 
+/** Fill call identity + tenant from AGI vars / dialplan argv; load cluster cfg. */
+void agi_init_call_context(agi_call_ctx_t *ctx, int argc, char **argv);
+
 char* GetExt(char* number);
 void DebugFunctionTrace(const char* thisFunc);
 void DebugFunctionMsg(const char* thisFunc, const char* thisMsg);
