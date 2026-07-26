@@ -137,14 +137,14 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 
 ### Phase 3: Pass Context Explicitly (reduce globals)
 
-**3.1 Pass a context pointer into handlers** — **done 2026-07-25** (API shape + macros gone)
+**3.1 Pass a context pointer into handlers** — **done 2026-07-25** (API shape + macros gone); **helpers threaded 2026-07-26** (`thread-s-helpers`)
 
 - Added `agi_session_t` (`call`, `parms`, `agi`, `res` pointers). `main` builds one `sess` pointing at process globals.
 - Command table / dispatch / named command handlers take `agi_session_t *s`.
 - **Name macros removed**; call/argv fields are explicit `g_call.*` / `g_parms.*` (same storage as `s->call` / `s->parms`).
-- `agi_init_call_context` writes through `ctx->` again.
-- Helpers (`PrepDial`, `SetRecord`, `CFCheck`, …) still use `g_call` / global `agi`/`res` directly — next slice can thread `s` and switch bodies to `s->call->` / `s->agi`.
-- Gate: `make test` PASS. Optional next: **3.2** AGI wrapper, or finish threading `s` into helpers / drop `(void)s`.
+- `agi_init_call_context` takes `agi_session_t *s` and writes through `s->call`.
+- Helpers (`PrepDial`, `SetRecord`, `CFCheck`, `DBGet`/`Put`/`Del`, `OutVoip`, `setMoh`, `Mangle`, …) take `s` and use `s->call->` / `s->agi` / `s->res`. Debug/`consoleMsg` still use process globals (thin).
+- Gate: `make test` PASS. Next: optional **3.2** AGI wrapper, or **Phase 4** domain splits.
 
 **3.2 Optional: AGI abstraction**
 

@@ -87,8 +87,9 @@ typedef struct cluster_cfg {
 
 /**
  * Phase 1.1 — call / AGI-arg context (still process-global storage).
- * Phase 3: command handlers take agi_session_t *; field access uses g_call / g_parms
- * (name macros removed). Helpers may still use g_call directly.
+ * Phase 3: command handlers take agi_session_t *.
+ * Phase 3 follow-on: helpers take s; field access via s->call / s->agi / s->res
+ * (storage still g_call / g_parms / agi / res).
  */
 typedef struct agi_call_ctx {
     char uniqueid[64];
@@ -118,7 +119,7 @@ typedef struct agi_parms {
 
 /**
  * Phase 3 — one session pointer for command handlers (points at process globals today).
- * Storage remains g_call / g_parms / agi / res so helpers need not all take s yet.
+ * Storage remains g_call / g_parms / agi / res; s points at those globals.
  */
 typedef struct agi_session {
     agi_call_ctx_t *call;
@@ -133,27 +134,27 @@ extern agi_parms_t g_parms;
 /* pbx3 SQLite (rescols, g_cluster_cfg, sqlQueryBind*, load_cluster_cfg) */
 #include "agi_sqlite.h"
 
-int AuthenticatePassword(const char *password_plain);
+int AuthenticatePassword(agi_session_t *s, const char *password_plain);
 
 /** Fill call identity + tenant from AGI vars / dialplan argv; load cluster cfg. */
-void agi_init_call_context(agi_call_ctx_t *ctx, int argc, char **argv);
+void agi_init_call_context(agi_session_t *s, int argc, char **argv);
 
 char* GetExt(char* number);
 void DebugFunctionTrace(const char* thisFunc);
 void DebugFunctionMsg(const char* thisFunc, const char* thisMsg);
-void setMoh();
-char* Mangle(char* preSel, char* transformList, char* data);
+void setMoh(agi_session_t *s);
+char* Mangle(agi_session_t *s, char* preSel, char* transformList, char* data);
 void RecGreet(agi_session_t *s);
 void OutRoute(agi_session_t *s);
 void OutTrunk(agi_session_t *s, char *key);
-void OutVoip(char *key);
-int Authenticate(char* password);
-int GetRecOption();
+void OutVoip(agi_session_t *s, char *key);
+int Authenticate(agi_session_t *s, char* password);
+int GetRecOption(agi_session_t *s);
 void LepDial(agi_session_t *s);
 void PostDial(agi_session_t *s);
-void PrepDial(char* number, char* type, char* twin, char* vmbox);
-char* SetRecord(char* extension, char* compass);
-char* CFCheck(char* type, char* number);
+void PrepDial(agi_session_t *s, char* number, char* type, char* twin, char* vmbox);
+char* SetRecord(agi_session_t *s, char* extension, char* compass);
+char* CFCheck(agi_session_t *s, char* type, char* number);
 void CFToggle(agi_session_t *s);
 void CFVMailSet(agi_session_t *s);
 void CFVMailToggle(agi_session_t *s);
@@ -168,19 +169,19 @@ void AgentUnpause(agi_session_t *s);
 void ChanSpyWhisper(agi_session_t *s);
 void ChanSpy(agi_session_t *s);
 void Ingress(agi_session_t *s);
-void CheckState(char* remotenum);
-char *CheckTime(char *cluster);
+void CheckState(agi_session_t *s, char* remotenum);
+char *CheckTime(agi_session_t *s, char *cluster);
 void IVR(agi_session_t *s, char *ivrname);
-void IVRAction(char* menu, char* press);
+void IVRAction(agi_session_t *s, char* menu, char* press);
 
-char* DBGet(char* family, char* key);
-void DBPut(char* family, char* key, char* val);
-void DBDel(char* family, char* key);
+char* DBGet(agi_session_t *s, char* family, char* key);
+void DBPut(agi_session_t *s, char* family, char* key, char* val);
+void DBDel(agi_session_t *s, char* family, char* key);
 
 void sig_handler(int signum);
 
 void OutQmt(agi_session_t *s);
 void QLogWrite(char* buffer);
-void outboundClip(char *key);
+void outboundClip(agi_session_t *s, char *key);
 void consoleMsg(char* vmsg, int level);
 #endif
