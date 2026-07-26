@@ -146,10 +146,11 @@ Goal: **simplify and modularise without big rewrites**. Prefer extraction and cl
 - Helpers (`PrepDial`, `SetRecord`, `CFCheck`, `DBGet`/`Put`/`Del`, `OutVoip`, `setMoh`, `Mangle`, …) take `s` and use `s->call->` / `s->agi` / `s->res`. Debug/`consoleMsg` still use process globals (thin).
 - Gate: `make test` PASS. Next: optional **3.2** AGI wrapper, or **Phase 4** domain splits.
 
-**3.2 Optional: AGI abstraction**
+**3.2 Optional: AGI abstraction** — **done 2026-07-26** (`agi-wrap-3.2`)
 
-- Introduce a thin wrapper (e.g. `agi_session_t` already holds `agi`/`res`) that exposes “get variable”, “exec”, “set”, etc. Handlers use `s->agi` for all AGI calls.
-- Outcome: one place for AGI interaction; easier to mock in tests or swap implementation.
+- Added `agi_wrap.c` / `agi_wrap.h`: thin `agi_exec` / `agi_get_variable` / `agi_answer` / … over `AGITool_*` via `s->agi`/`s->res`.
+- Product handlers use wrappers; `AGITool_Init`/`Destroy`/`ListGetVal` and Debug/`consoleMsg`/`agi_sqlite` Wait retries still call `AGITool_*` directly (globals or env list).
+- `cagi.c` untouched. Gate: `make test` PASS.
 
 ---
 
