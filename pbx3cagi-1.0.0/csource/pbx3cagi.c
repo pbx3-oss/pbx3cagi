@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include "pbx3cagi.h"
+#include "agi_wrap.h"
 #include "cagi.h"
 #include "bsd_compat.h"
 #include <sys/wait.h>
@@ -243,7 +244,7 @@ void agi_init_call_context(agi_session_t *s, int argc, char **argv)
     }
 
     strlcat(setcdrcmd, ctx->myCluster, sizeof(setcdrcmd));
-    AGITool_exec(s->agi, s->res, "Set", setcdrcmd);
+    agi_exec(s, "Set", setcdrcmd);
 
     if (argc > 1 && argv[1] != NULL) {
         log_cmd = argv[1];
@@ -268,7 +269,7 @@ int main(int argc, char **argv)
 
     AGITool_Init(&agi);
 
-    AGITool_get_variable(&agi, &res, "DEBUG");
+    AGITool_get_variable(&agi, &res, "DEBUG");  /* before sess; keep raw */
     if (!strcmp(res.data, "ON")) {
         debug = TRUE;
     }
@@ -294,8 +295,8 @@ int main(int argc, char **argv)
 
     /* Feature codes (*NN): answer, settle, digitize. Else named command. */
     if (!strncmp(argv[1], "*", 1)) {
-        AGITool_answer(&agi, &res);
-        AGITool_exec(&agi, &res, "Wait", "0.5");
+        agi_answer(&sess);
+        agi_exec(&sess, "Wait", "0.5");
         strlcpy(numwork, argv[1], sizeof(numwork));
         strlcpy(chardig, numwork + 1, sizeof(chardig));
         g_parms.switchdig = atoi(chardig);
@@ -381,7 +382,7 @@ void setMoh(agi_session_t *s)
     DebugFunctionTrace(__FUNCTION__);
 
     strlcat(setmohcmd, s->call->myCluster, sizeof(setmohcmd));
-    AGITool_exec(s->agi, s->res, "Set", setmohcmd);
+    agi_exec(s, "Set", setmohcmd);
     return;
 }
 
@@ -498,17 +499,17 @@ void RecGreet(agi_session_t *s)
         return;
     }
     // message to record
-    AGITool_exec(s->agi, s->res, "Playback", "pm-announcement-number");
-    AGITool_exec(s->agi, s->res, "SayDigits", ext);
-    AGITool_exec(s->agi, s->res, "Playback", "is-now-being-recorded");
-    AGITool_exec(s->agi, s->res, "Playback", "silence/1");
-    AGITool_exec(s->agi, s->res, "Playback", "press-pound-save-changes");
+    agi_exec(s, "Playback", "pm-announcement-number");
+    agi_exec(s, "SayDigits", ext);
+    agi_exec(s, "Playback", "is-now-being-recorded");
+    agi_exec(s, "Playback", "silence/1");
+    agi_exec(s, "Playback", "press-pound-save-changes");
 
     // record message
     while (press == '2')
     {
-        AGITool_record_file(s->agi, s->res, tmpGreetFile, "wav", "#", 120000, 10, 10, 0);
-        AGITool_stream_file(s->agi, s->res, tmpGreetFile, "", 0);
+        agi_record_file(s, tmpGreetFile, "wav", "#", 120000, 10, 10, 0);
+        agi_stream_file(s, tmpGreetFile, "", 0);
         press = GetRecOption(s);
     }
     strlcat(tmpGreetFile, ".wav", sizeof(tmpGreetFile));
@@ -520,13 +521,13 @@ void RecGreet(agi_session_t *s)
         snprintf(vmsg, sizeof(vmsg), "newfilename is %s", newGreetFile);
         DebugFunctionMsg(__FUNCTION__, vmsg);
         rename(tmpGreetFile, newGreetFile);
-        AGITool_exec(s->agi, s->res, "Playback", "your-msg-has-been-saved");
-        AGITool_exec(s->agi, s->res, "Playback", "goodbye");
+        agi_exec(s, "Playback", "your-msg-has-been-saved");
+        agi_exec(s, "Playback", "goodbye");
         return;
     }
 
     remove(tmpGreetFile);
-    AGITool_exec(s->agi, s->res, "Playback", "cancelled");
+    agi_exec(s, "Playback", "cancelled");
 }
 
 
@@ -544,8 +545,8 @@ int AuthenticatePassword(agi_session_t *s, const char *password_plain)
     }
 
     strlcpy(authbuf, password_plain, sizeof(authbuf));
-    AGITool_exec(s->agi, s->res, "Playback", "silence/1");
-    AGITool_exec(s->agi, s->res, "Authenticate", authbuf);
+    agi_exec(s, "Playback", "silence/1");
+    agi_exec(s, "Authenticate", authbuf);
     return atoi(s->res->result);
 }
 
@@ -578,28 +579,28 @@ int GetRecOption(agi_session_t *s)
     while (count < 3)
     {
         // When message has been recorded give options
-        AGITool_stream_file(s->agi, s->res, "save-announce-press", "123", 0);
+        agi_stream_file(s, "save-announce-press", "123", 0);
         if (atoi(s->res->result))
             return atoi(s->res->result);
-        AGITool_stream_file(s->agi, s->res, "digits/1", "123", 0);
+        agi_stream_file(s, "digits/1", "123", 0);
         if (atoi(s->res->result))
             return atoi(s->res->result);
-        AGITool_stream_file(s->agi, s->res, "to-rerecord-announce", "123", 0);
+        agi_stream_file(s, "to-rerecord-announce", "123", 0);
         if (atoi(s->res->result))
             return atoi(s->res->result);
-        AGITool_stream_file(s->agi, s->res, "digits/2", "123", 0);
+        agi_stream_file(s, "digits/2", "123", 0);
         if (atoi(s->res->result))
             return atoi(s->res->result);
-        AGITool_stream_file(s->agi, s->res, "to-cancel-this-msg", "123", 0);
+        agi_stream_file(s, "to-cancel-this-msg", "123", 0);
         if (atoi(s->res->result))
             return atoi(s->res->result);
-        AGITool_stream_file(s->agi, s->res, "press", "123", 0);
+        agi_stream_file(s, "press", "123", 0);
         if (atoi(s->res->result))
             return atoi(s->res->result);
-        AGITool_stream_file(s->agi, s->res, "digits/3", "123", 0);
+        agi_stream_file(s, "digits/3", "123", 0);
         if (atoi(s->res->result))
             return atoi(s->res->result);
-        AGITool_stream_file(s->agi, s->res, "silence/5", "123", 0);
+        agi_stream_file(s, "silence/5", "123", 0);
         if (atoi(s->res->result))
             return atoi(s->res->result);
         count++;
@@ -644,7 +645,7 @@ void AgentLogin(agi_session_t *s)
     strlcpy(statechan, "Local/", sizeof(statechan));
     strlcat(statechan, s->call->callerid, sizeof(statechan));
 
-    AGITool_get_data(s->agi, s->res, "agent-user", 7000, 5);
+    agi_get_data(s, "agent-user", 7000, 5);
 
     while (!finished)
     {
@@ -655,7 +656,7 @@ void AgentLogin(agi_session_t *s)
             if (strcmp(sqlQueryBind1("SELECT pkey FROM agent WHERE pkey=?", agent), ""))
             {
                 strlcpy(agentpasswd, sqlQueryBind1("SELECT passwd FROM agent WHERE pkey=?", agent), sizeof(agentpasswd));
-                AGITool_exec(s->agi, s->res, "Authenticate", agentpasswd);
+                agi_exec(s, "Authenticate", agentpasswd);
                 if (atoi(s->res->result) == 0)
                 {
                     strlcpy(oldagent, DBGet(s, f_eAgent, s->call->callerid), sizeof(oldagent));
@@ -668,7 +669,7 @@ void AgentLogin(agi_session_t *s)
                     if (strcmp(oldagent, ""))
                     {
                         strlcpy(startepoch, DBGet(s, f_dynLogin, oldagent), sizeof(startepoch));
-                        AGITool_get_variable(s->agi, s->res, "EPOCH"); //Asterisk system variable EPOCH
+                        agi_get_variable(s, "EPOCH"); //Asterisk system variable EPOCH
                         strlcpy(epoch, s->res->data, sizeof(epoch));
                         for (i = 1; i < 7; i++)
                         {
@@ -679,7 +680,7 @@ void AgentLogin(agi_session_t *s)
                             {
                                 //								snprintf (queuearg, sizeof(queuearg), "%s%sLocal/%s@queues",queuename,ASTDLIM,extenAgent);
                                 snprintf(queuearg, sizeof(queuearg), "%s,%s", queuename, agentchan);
-                                AGITool_exec(s->agi, s->res, "RemoveQueueMember", queuearg);
+                                agi_exec(s, "RemoveQueueMember", queuearg);
                             }
                         }
                         if (strcmp(DBGet(s, f_dynLogin, oldagent), ""))
@@ -691,7 +692,7 @@ void AgentLogin(agi_session_t *s)
                         DBDel(s, f_dynLogin, oldagent);
                         DBDel(s, f_dAgent, oldagent);
                         DBDel(s, f_eAgent, extenAgent);
-                        AGITool_exec(s->agi, s->res, "Wait", "1");
+                        agi_exec(s, "Wait", "1");
                     }
                     for (i = 1; i < 7; i++)
                     {
@@ -702,10 +703,10 @@ void AgentLogin(agi_session_t *s)
                         {
                             snprintf(queuearg, sizeof(queuearg), "%s,%s,,,Agent/%s",
                                      queuename, agentchan, agent);
-                            AGITool_exec(s->agi, s->res, "AddQueueMember", queuearg);
+                            agi_exec(s, "AddQueueMember", queuearg);
                         }
                     }
-                    AGITool_get_variable(s->agi, s->res, "EPOCH"); //Asterisk system variable EPOCH
+                    agi_get_variable(s, "EPOCH"); //Asterisk system variable EPOCH
                     strlcpy(epoch, s->res->data, sizeof(epoch));
                     snprintf(buffer, sizeof(buffer), "%s|%s|NONE|Agent/%s|AGENTLOGIN|%s", epoch, s->call->uniqueid, agent, agentchan);
                     QLogWrite(buffer);
@@ -715,13 +716,13 @@ void AgentLogin(agi_session_t *s)
                     }
                     DBPut(s, f_dAgent, agent, s->call->callerid);
                     DBPut(s, f_eAgent, s->call->callerid, agent);
-                    AGITool_exec(s->agi, s->res, "Playback", "agent-loginok");
+                    agi_exec(s, "Playback", "agent-loginok");
                     finished = TRUE;
                     continue;
                 }
             }
         }
-        AGITool_get_data(s->agi, s->res, "agent-incorrect", 7000, 5);
+        agi_get_data(s, "agent-incorrect", 7000, 5);
     }
 }
 void AgentLogout(agi_session_t *s)
@@ -763,14 +764,14 @@ void AgentLogout(agi_session_t *s)
 
     if (!strcmp(agent, ""))
     {
-        AGITool_exec(s->agi, s->res, "Playback", "agent-loggedoff");
+        agi_exec(s, "Playback", "agent-loggedoff");
         return;
     }
 
-    AGITool_get_variable(s->agi, s->res, "EPOCH"); //Asterisk system variable EPOCH
+    agi_get_variable(s, "EPOCH"); //Asterisk system variable EPOCH
     strlcpy(epoch, s->res->data, sizeof(epoch));
     strlcpy(startepoch, DBGet(s, f_dynLogin, agent), sizeof(startepoch));
-    //	AGITool_exec(s->agi,s->res,"Authenticate",agentpasswd);
+    //	agi_exec(s, "Authenticate",agentpasswd);
     //	if (atoi(s->res->result)==0) {
     for (i = 1; i < 7; i++)
     {
@@ -780,7 +781,7 @@ void AgentLogout(agi_session_t *s)
         if (strcmp(queuename, "None"))
         {
             snprintf(queuearg, sizeof(queuearg), "%s,%s", queuename, agentchan);
-            AGITool_exec(s->agi, s->res, "RemoveQueueMember", queuearg);
+            agi_exec(s, "RemoveQueueMember", queuearg);
         }
     }
     if (strcmp(DBGet(s, f_dynLogin, agent), ""))
@@ -792,7 +793,7 @@ void AgentLogout(agi_session_t *s)
     DBDel(s, f_dynLogin, agent);
     DBDel(s, f_dAgent, agent);
     DBDel(s, f_eAgent, s->call->callerid);
-    AGITool_exec(s->agi, s->res, "Playback", "agent-loggedoff");
+    agi_exec(s, "Playback", "agent-loggedoff");
     //	}
 }
 
@@ -811,9 +812,9 @@ void AgentPause(agi_session_t *s)
     if (strcmp(agent, ""))
     {
         snprintf(queuearg, sizeof(queuearg), ",Local/%s@%s", s->call->callerid, s->call->myClusterContext);
-        AGITool_exec(s->agi, s->res, "PauseQueueMember", queuearg);
+        agi_exec(s, "PauseQueueMember", queuearg);
     }
-    AGITool_exec(s->agi, s->res, "Playback", "beep");
+    agi_exec(s, "Playback", "beep");
 }
 
 void AgentUnpause(agi_session_t *s)
@@ -831,9 +832,9 @@ void AgentUnpause(agi_session_t *s)
     if (strcmp(agent, ""))
     {
         snprintf(queuearg, sizeof(queuearg), ",Local/%s@%s", s->call->callerid, s->call->myClusterContext);
-        AGITool_exec(s->agi, s->res, "UnPauseQueueMember", queuearg);
+        agi_exec(s, "UnPauseQueueMember", queuearg);
     }
-    AGITool_exec(s->agi, s->res, "Playback", "beep");
+    agi_exec(s, "Playback", "beep");
 }
 
 //ToDo needs to become extenSpy
@@ -853,7 +854,7 @@ void ChanSpyWhisper(agi_session_t *s)
     strlcpy(options, SIPDRIVER, sizeof(options));
     strlcat(options, ext, sizeof(options));
     strlcat(options, ",qw", sizeof(options));
-    AGITool_exec(s->agi, s->res, "ChanSpy", options);
+    agi_exec(s, "ChanSpy", options);
 }
 
 //ToDo needs to become extenSpy
@@ -874,7 +875,7 @@ void ChanSpy(agi_session_t *s)
     strlcat(options, "/", sizeof(options));
     strlcat(options, ext, sizeof(options));
     strlcat(options, ",q", sizeof(options));
-    AGITool_exec(s->agi, s->res, "ChanSpy", options);
+    agi_exec(s, "ChanSpy", options);
 }
 
 
@@ -903,7 +904,7 @@ void OutRoute(agi_session_t *s)
     if (g_cluster_cfg.dynamicfeatures[0] != '\0')
     {
         snprintf(dfbuf, sizeof(dfbuf), "__DYNAMIC_FEATURES=%s", g_cluster_cfg.dynamicfeatures);
-        AGITool_exec(s->agi, s->res, "Set", dfbuf);
+        agi_exec(s, "Set", dfbuf);
     }
 
     
@@ -912,8 +913,8 @@ void OutRoute(agi_session_t *s)
      */
     if (g_cluster_cfg.abstimeout_sec == 0)
     {
-        AGITool_exec(s->agi, s->res, "Playtones", "busy");
-        AGITool_exec(s->agi, s->res, "Busy", "");
+        agi_exec(s, "Playtones", "busy");
+        agi_exec(s, "Busy", "");
         return;
     }
     abstimeint = g_cluster_cfg.abstimeout_sec;
@@ -931,8 +932,8 @@ void OutRoute(agi_session_t *s)
         {
             if (atoi(extenAbstimeout) == 0)
             {
-                AGITool_exec(s->agi, s->res, "Playtones", "busy");
-                AGITool_exec(s->agi, s->res, "Busy", "");
+                agi_exec(s, "Playtones", "busy");
+                agi_exec(s, "Busy", "");
                 return;
             }
             abstimeint = atoi(extenAbstimeout);
@@ -950,13 +951,13 @@ void OutRoute(agi_session_t *s)
     if (g_cluster_cfg.chanmax_str[0] != '\0')
     {
         snprintf(clusterGroup, sizeof(clusterGroup), "GROUP(%s)", s->call->myCluster);
-        AGITool_set_variable(s->agi, s->res, clusterGroup, s->call->myCluster);
+        agi_set_variable(s, clusterGroup, s->call->myCluster);
         snprintf(clusterCount, sizeof(clusterCount), "GROUP_COUNT(%s)", s->call->myCluster);
-        AGITool_get_variable(s->agi, s->res, clusterCount); // clusterCount is the number of active outbound calls
+        agi_get_variable(s, clusterCount); // clusterCount is the number of active outbound calls
         if (atoi(s->res->data) > atoi(g_cluster_cfg.chanmax_str))
         {
-            AGITool_exec(s->agi, s->res, "Playtones", "busy");
-            AGITool_exec(s->agi, s->res, "Busy", "");
+            agi_exec(s, "Playtones", "busy");
+            agi_exec(s, "Busy", "");
             return;
         }
     }
@@ -974,7 +975,7 @@ void OutRoute(agi_session_t *s)
     if (!strncmp(auth, "YES", 3))
     {
         snprintf(eparm, sizeof(eparm), "/etc/asterisk/selauth.conf%sa", ASTDLIM);
-        AGITool_exec(s->agi, s->res, "Authenticate", eparm);
+        agi_exec(s, "Authenticate", eparm);
         if (atoi(s->res->result) != 0)
         {
             return;
@@ -986,7 +987,7 @@ void OutRoute(agi_session_t *s)
     last = 0;
     if (!strncmp(strategy, "balance", 7))
     {
-        AGITool_get_variable(s->agi, s->res, PARM_KEY); // PARM_KEY is the path key - no change for PBX3
+        agi_get_variable(s, PARM_KEY); // PARM_KEY is the path key - no change for PBX3
         last = atoi(s->res->data);
         if (last < 3)
         {
@@ -1027,7 +1028,7 @@ void OutRoute(agi_session_t *s)
             {
 // GLOBAL is the global call counter
                 snprintf(setlast, sizeof(setlast), "GLOBAL(%s)=%d", PARM_KEY, last);
-                AGITool_exec(s->agi, s->res, "Set", setlast);
+                agi_exec(s, "Set", setlast);
             }
             else if (strcmp(path[last], "None"))
             {
@@ -1035,7 +1036,7 @@ void OutRoute(agi_session_t *s)
             }
         }
     
-        AGITool_get_variable(s->agi, s->res, "DIALSTATUS"); // DIALSTATUS is the status of the call - answered, busy, cancelled
+        agi_get_variable(s, "DIALSTATUS"); // DIALSTATUS is the status of the call - answered, busy, cancelled
         if (!strcmp(s->res->data, "ANSWER"))
         {
             return;
@@ -1044,14 +1045,14 @@ void OutRoute(agi_session_t *s)
         {
             if (!strncmp(g_cluster_cfg.playbusy, "YES", 3))
             {
-                AGITool_exec(s->agi, s->res, "Playtones", "busy");
-                AGITool_exec(s->agi, s->res, "Busy", "");
+                agi_exec(s, "Playtones", "busy");
+                agi_exec(s, "Busy", "");
             }
             else
             {
-                AGITool_exec(s->agi, s->res, "Playback", "numb-dialled-busy");
-                AGITool_exec(s->agi, s->res, "Playback", "silence/1");
-                AGITool_exec(s->agi, s->res, "Playback", "please-try-again-later");
+                agi_exec(s, "Playback", "numb-dialled-busy");
+                agi_exec(s, "Playback", "silence/1");
+                agi_exec(s, "Playback", "please-try-again-later");
             }
             return;
         }
@@ -1063,7 +1064,7 @@ void OutRoute(agi_session_t *s)
 
         if (!strncmp(g_cluster_cfg.playbeep, "YES", 3) && strcmp(path[last], "None"))
         {
-            AGITool_exec(s->agi, s->res, "Playback", "beep");
+            agi_exec(s, "Playback", "beep");
         }
         last++;
         if (last >= 3)
@@ -1074,22 +1075,22 @@ void OutRoute(agi_session_t *s)
 
     if (strcmp(alternate, "") && strcmp(alternate, s->call->extension))
     {
-        AGITool_set_priority(s->agi, s->res, 1);
-        AGITool_set_extension(s->agi, s->res, alternate);
-        AGITool_set_context(s->agi, s->res, s->call->myClusterContext);
+        agi_set_priority(s, 1);
+        agi_set_extension(s, alternate);
+        agi_set_context(s, s->call->myClusterContext);
         return;
     }
 
     if (!strncmp(g_cluster_cfg.playcongested, "YES", 3))
     {
-        AGITool_exec(s->agi, s->res, "Playtones", "congestion");
-        AGITool_exec(s->agi, s->res, "Congestion", "");
+        agi_exec(s, "Playtones", "congestion");
+        agi_exec(s, "Congestion", "");
     }
     else
     {
-        AGITool_exec(s->agi, s->res, "Playback", "were-sorry");
-        AGITool_exec(s->agi, s->res, "Playback", "call-cannot-complete");
-        AGITool_exec(s->agi, s->res, "Playback", "please-hang-up-and-try-again");
+        agi_exec(s, "Playback", "were-sorry");
+        agi_exec(s, "Playback", "call-cannot-complete");
+        agi_exec(s, "Playback", "please-hang-up-and-try-again");
     }
 }
 
@@ -1107,7 +1108,7 @@ void OutTrunk(agi_session_t *s, char *key)
     if (!strcmp(active, "YES"))
     {
         OutVoip(s, key);
-        AGITool_get_variable(s->agi, s->res, "DIALSTATUS"); // DIALSTATUS is the status of the call - answered, busy, cancelled
+        agi_get_variable(s, "DIALSTATUS"); // DIALSTATUS is the status of the call - answered, busy, cancelled
         if (!strcmp(s->res->data, "ANSWER"))
         {
         }
@@ -1115,28 +1116,28 @@ void OutTrunk(agi_session_t *s, char *key)
         {
             if (!strncmp(g_cluster_cfg.playbusy, "YES", 3))
             {
-                AGITool_exec(s->agi, s->res, "Playtones", "busy");
-                AGITool_exec(s->agi, s->res, "Busy", "");
+                agi_exec(s, "Playtones", "busy");
+                agi_exec(s, "Busy", "");
             }
             else
             {
-                AGITool_exec(s->agi, s->res, "Playback", "numb-dialled-busy");
-                AGITool_exec(s->agi, s->res, "Playback", "silence/1");
-                AGITool_exec(s->agi, s->res, "Playback", "please-try-again-later");
+                agi_exec(s, "Playback", "numb-dialled-busy");
+                agi_exec(s, "Playback", "silence/1");
+                agi_exec(s, "Playback", "please-try-again-later");
             }
         }
         else
         {
             if (!strncmp(g_cluster_cfg.playcongested, "YES", 3))
             {
-                AGITool_exec(s->agi, s->res, "Playtones", "congestion");
-                AGITool_exec(s->agi, s->res, "Congestion", "");
+                agi_exec(s, "Playtones", "congestion");
+                agi_exec(s, "Congestion", "");
             }
             else
             {
-                AGITool_exec(s->agi, s->res, "Playback", "were-sorry");
-                AGITool_exec(s->agi, s->res, "Playback", "call-cannot-complete");
-                AGITool_exec(s->agi, s->res, "Playback", "please-hang-up-and-try-again");
+                agi_exec(s, "Playback", "were-sorry");
+                agi_exec(s, "Playback", "call-cannot-complete");
+                agi_exec(s, "Playback", "please-hang-up-and-try-again");
             }
         }
     }
@@ -1228,22 +1229,22 @@ void OutVoip(agi_session_t *s, char *key)
         }
         if (!strcmp(g_cluster_cfg.cfwd_answer, "enabled"))
         {
-            AGITool_answer(s->agi, s->res);
+            agi_answer(s);
         }
     }
 
-    AGITool_set_variable(s->agi, s->res, "GROUP()", "OUTBOUND_GROUP");
-    AGITool_get_variable(s->agi, s->res, "GROUP_COUNT()"); // GROUP_COUNT() is the number of active outbound calls
+    agi_set_variable(s, "GROUP()", "OUTBOUND_GROUP");
+    agi_get_variable(s, "GROUP_COUNT()"); // GROUP_COUNT() is the number of active outbound calls
     if (atoi(s->res->data) <= atoi(g_cluster_cfg.voipmax_str))
     {
         strlcpy(recRet, SetRecord(s, s->call->callerid, "Outbound"), sizeof(recRet));
         strlcat(dialString, recRet, sizeof(dialString));
         //  Abs timeout
-        AGITool_exec(s->agi, s->res, "Set", abstimeout);
+        agi_exec(s, "Set", abstimeout);
         //  acounting
         // setOutbound_cdr_userfield();
         // Dial
-        AGITool_exec(s->agi, s->res, "Dial", dialString);
+        agi_exec(s, "Dial", dialString);
     }
 }
 
@@ -1263,9 +1264,9 @@ void LepDial(agi_session_t *s)
     char transferer[MAX_EXT_LEN] = {'\0'};
 
     /* Phase G: dialplan gates Dial on non-empty PBX3_DIAL — clear so CFIM/VM early exits skip Dial. */
-    AGITool_set_variable(s->agi, s->res, "PBX3_DIAL", "");
+    agi_set_variable(s, "PBX3_DIAL", "");
 
-    AGITool_get_variable(s->agi, s->res, "BLINDTRANSFER");  //set in extensions.conf
+    agi_get_variable(s, "BLINDTRANSFER");  //set in extensions.conf
     strlcpy(blindtransfer, s->res->data, sizeof(blindtransfer));
 
     sqlQueryBind2("SELECT dvrvmail,extalert,cluster FROM ipphone WHERE shortuid=? AND cluster=?", s->call->extension, s->call->myCluster);
@@ -1298,30 +1299,30 @@ void LepDial(agi_session_t *s)
             {
                 if (strcmp(s->call->agi_dnid, s->call->extension))
                 {
-                    AGITool_exec(s->agi, s->res, "Playback", "silence/1");
+                    agi_exec(s, "Playback", "silence/1");
                     if (!strcmp(g_cluster_cfg.playtransfer, "YES"))
                     {
-                        AGITool_exec(s->agi, s->res, "Playback", "pls-hold-while-try");
+                        agi_exec(s, "Playback", "pls-hold-while-try");
                     }
                     strlcpy(transferer, pBtr, sizeof(transferer));
-                    AGITool_set_priority(s->agi, s->res, 1);
-                    AGITool_set_extension(s->agi, s->res, transferer);
-                    AGITool_set_context(s->agi, s->res, s->call->myClusterContext);
+                    agi_set_priority(s, 1);
+                    agi_set_extension(s, transferer);
+                    agi_set_context(s, s->call->myClusterContext);
                     return;
                 }
             }
             else
             {
-                AGITool_exec(s->agi, s->res, "Playtones", "congestion");
-                AGITool_exec(s->agi, s->res, "congestion", "");
+                agi_exec(s, "Playtones", "congestion");
+                agi_exec(s, "congestion", "");
                 return;
             }
         }
         else
         {
-            //            AGITool_exec(s->agi,s->res,"Playback","silence/1");
+            //            agi_exec(s, "Playback","silence/1");
             strlcat(vmflags, "u", sizeof(vmflags));
-            AGITool_exec(s->agi, s->res, "Voicemail", strcat(vmbox, vmflags));
+            agi_exec(s, "Voicemail", strcat(vmbox, vmflags));
             return;
         }
     }
@@ -1344,13 +1345,13 @@ void LepDial(agi_session_t *s)
  */
     if (strcmp(extalert, ""))
     {
-        AGITool_exec(s->agi, s->res, "SIPAddHeader", extalert);
+        agi_exec(s, "SIPAddHeader", extalert);
     }
 
  /**
   *  set a pickup mark for directed call pickup
   */
-    AGITool_set_variable(s->agi, s->res, "__PICKUPMARK", s->call->extension);
+    agi_set_variable(s, "__PICKUPMARK", s->call->extension);
 
 /**
   *  Add a twin if we have one enabled
@@ -1397,7 +1398,7 @@ void PostDial(agi_session_t *s)
         strlcpy(dialed, s->call->extension, sizeof(dialed));
     }
 
-    AGITool_get_variable(s->agi, s->res, "BLINDTRANSFER");
+    agi_get_variable(s, "BLINDTRANSFER");
     strlcpy(blindtransfer, s->res->data, sizeof(blindtransfer));
 
     sqlQueryBind2("SELECT dvrvmail,cluster FROM ipphone WHERE shortuid=? AND cluster=?", dialed, s->call->myCluster);
@@ -1416,7 +1417,7 @@ void PostDial(agi_session_t *s)
         strlcat(vmflags, "s", sizeof(vmflags));
     }
 
-    AGITool_get_variable(s->agi, s->res, "DIALSTATUS");
+    agi_get_variable(s, "DIALSTATUS");
     strcpy(dstatus, s->res->data);
     if (!strcmp(dstatus, "ANSWER") || !strcmp(dstatus, "CANCEL"))
     {
@@ -1438,16 +1439,16 @@ void PostDial(agi_session_t *s)
                 {
                     if (g_cluster_cfg.bounce_alert[0] != '\0')
                     {
-                        AGITool_exec(s->agi, s->res, "SIPAddHeader", g_cluster_cfg.bounce_alert);
+                        agi_exec(s, "SIPAddHeader", g_cluster_cfg.bounce_alert);
                     }
                     strlcpy(calleridsave, s->call->callerid, sizeof(calleridsave));
                     strlcpy(s->call->callerid, "R", sizeof(s->call->callerid));
                     strlcat(s->call->callerid, calleridsave, sizeof(s->call->callerid));
-                    AGITool_set_callerid(s->agi, s->res, s->call->callerid);
+                    agi_set_callerid(s, s->call->callerid);
                     strlcpy(transferer, pBtr, sizeof(transferer));
-                    AGITool_set_priority(s->agi, s->res, 1);
-                    AGITool_set_extension(s->agi, s->res, transferer);
-                    AGITool_set_context(s->agi, s->res, s->call->myClusterContext);
+                    agi_set_priority(s, 1);
+                    agi_set_extension(s, transferer);
+                    agi_set_context(s, s->call->myClusterContext);
                     return;
                 }
             }
@@ -1455,7 +1456,7 @@ void PostDial(agi_session_t *s)
         else
         {
             strlcat(vmflags, "u", sizeof(vmflags));
-            AGITool_exec(s->agi, s->res, "Voicemail", strcat(vmbox, vmflags));
+            agi_exec(s, "Voicemail", strcat(vmbox, vmflags));
             return;
         }
     }
@@ -1465,55 +1466,55 @@ void PostDial(agi_session_t *s)
         {
             if (strcmp(s->call->agi_dnid, dialed))
             {
-                AGITool_exec(s->agi, s->res, "Playback", "silence/1");
+                agi_exec(s, "Playback", "silence/1");
                 if (!strcmp(g_cluster_cfg.playtransfer, "YES"))
                 {
-                    AGITool_exec(s->agi, s->res, "Playback", "pls-hold-while-try");
+                    agi_exec(s, "Playback", "pls-hold-while-try");
                 }
 
                 if (g_cluster_cfg.bounce_alert[0] != '\0')
                 {
-                    AGITool_exec(s->agi, s->res, "SIPAddHeader", g_cluster_cfg.bounce_alert);
+                    agi_exec(s, "SIPAddHeader", g_cluster_cfg.bounce_alert);
                 }
                 strlcpy(transferer, pBtr, sizeof(transferer));
-                AGITool_set_priority(s->agi, s->res, 1);
-                AGITool_set_extension(s->agi, s->res, transferer);
-                AGITool_set_context(s->agi, s->res, s->call->myClusterContext);
+                agi_set_priority(s, 1);
+                agi_set_extension(s, transferer);
+                agi_set_context(s, s->call->myClusterContext);
                 return;
             }
             else
             {
                 if (g_cluster_cfg.blind_busy[0] != '\0')
                 {
-                    AGITool_set_priority(s->agi, s->res, 1);
-                    AGITool_set_extension(s->agi, s->res, g_cluster_cfg.blind_busy);
-                    AGITool_set_context(s->agi, s->res, s->call->myClusterContext);
+                    agi_set_priority(s, 1);
+                    agi_set_extension(s, g_cluster_cfg.blind_busy);
+                    agi_set_context(s, s->call->myClusterContext);
                     return;
                 }
                 else
                 {
-                    AGITool_exec(s->agi, s->res, "Playtones", "busy");
-                    AGITool_exec(s->agi, s->res, "Busy", "");
+                    agi_exec(s, "Playtones", "busy");
+                    agi_exec(s, "Busy", "");
                     return;
                 }
             }
         }
         else
         {
-            AGITool_exec(s->agi, s->res, "Playtones", "busy");
-            AGITool_exec(s->agi, s->res, "Busy", "");
+            agi_exec(s, "Playtones", "busy");
+            agi_exec(s, "Busy", "");
             return;
         }
     }
     else
     {
         strlcat(vmflags, "b", sizeof(vmflags));
-        AGITool_exec(s->agi, s->res, "Voicemail", strcat(vmbox, vmflags));
+        agi_exec(s, "Voicemail", strcat(vmbox, vmflags));
         return;
     }
 
-    AGITool_exec(s->agi, s->res, "Playtones", "busy");
-    AGITool_exec(s->agi, s->res, "Busy", "");
+    agi_exec(s, "Playtones", "busy");
+    agi_exec(s, "Busy", "");
     return;
 }
 
@@ -1532,7 +1533,7 @@ void PrepDial(agi_session_t *s, char *number, char *type, char *twin, char *vmbo
  *  set the dialled number (DNID) in the CDR user field
  */
     strlcat(setcdrcmduser, s->call->agi_dnid, sizeof(setcdrcmduser));
-    AGITool_exec(s->agi, s->res, "Set", setcdrcmduser);
+    agi_exec(s, "Set", setcdrcmduser);
 
 /**
  *  begin to set up the dialstring.
@@ -1621,7 +1622,7 @@ void PrepDial(agi_session_t *s, char *number, char *type, char *twin, char *vmbo
 /**
  *  If the dial definition has asked for MOH instead of ringback then set it here
  */
-    AGITool_get_variable(s->agi, s->res, "MOH"); //set ON/OFF in inbound routes from the dial definition
+    agi_get_variable(s, "MOH"); //set ON/OFF in inbound routes from the dial definition
     if (!strcmp(s->res->data, "YES"))
     {
         strlcat(dialString, "m", sizeof(dialString));
@@ -1630,7 +1631,7 @@ void PrepDial(agi_session_t *s, char *number, char *type, char *twin, char *vmbo
  *  Phase E (queue) + Phase G (LepDial): decide only — set PBX3_DIAL for
  *  dialplan Dial(${PBX3_DIAL}). Short-run AGI; dialplan owns the bridge.
  */
-    AGITool_set_variable(s->agi, s->res, "PBX3_DIAL", dialString);
+    agi_set_variable(s, "PBX3_DIAL", dialString);
     return;
 }
 
@@ -1766,7 +1767,7 @@ char * SetRecord(agi_session_t *s, char *key, char *compass)
          * FILE refs MUST BE CHANGED *DONE*
          */
         snprintf(soundFile, sizeof(soundFile), " /var/spool/asterisk/monitor/%s/%s.wav", s->call->myCluster, filename);
-        AGITool_exec(s->agi, s->res, "MixMonitor", soundFile);
+        agi_exec(s, "MixMonitor", soundFile);
 
     }
     return pdial;
@@ -1818,7 +1819,7 @@ char * CFCheck(agi_session_t *s, char *type, char *number)
  *  then go to voicemail
  */
             sprintf(vmbox,"%s@%s%s",s->call->agi_dnid,s->call->myCluster,vmflags);
-            AGITool_exec(s->agi,s->res,"Voicemail",vmbox);
+            agi_exec(s, "Voicemail",vmbox);
 			return NULL;
         }
 /**
@@ -1832,10 +1833,10 @@ char * CFCheck(agi_session_t *s, char *type, char *number)
  *      You can turn this behaviour off if you wish by setting the cluster control variable PLAYTRANSFER to false. 
  */
         {
-            AGITool_exec(s->agi, s->res, "Playback", "silence/1");
+            agi_exec(s, "Playback", "silence/1");
             if (!strcmp(g_cluster_cfg.playtransfer, "YES"))
             {
-                AGITool_exec(s->agi, s->res, "Playback", "pls-hold-while-try");
+                agi_exec(s, "Playback", "pls-hold-while-try");
             }
         }
 /**
@@ -1849,14 +1850,14 @@ char * CFCheck(agi_session_t *s, char *type, char *number)
     if (strcmp(s->call->rdnis,"unknown"))
     {
         strcat(rdnis_string, s->call->callerid);
-        AGITool_exec(s->agi, s->res, "Set", rdnis_string);
+        agi_exec(s, "Set", rdnis_string);
     }
 /**
  *  and branch...
  */
-        AGITool_set_priority(s->agi, s->res, 1);
-        AGITool_set_extension(s->agi, s->res, cfnum);
-        AGITool_set_context(s->agi, s->res, s->call->myClusterContext);
+        agi_set_priority(s, 1);
+        agi_set_extension(s, cfnum);
+        agi_set_context(s, s->call->myClusterContext);
         return NULL;
     }
     return number;
@@ -1885,14 +1886,14 @@ void CFToggle(agi_session_t *s)
 
     DBPut(s, PARM_KEY, sipId, toNum);
 
-    AGITool_exec(s->agi, s->res, "Playback", "call-forwarding");
+    agi_exec(s, "Playback", "call-forwarding");
     if (strcmp(toNum, ""))
     {
-        AGITool_exec(s->agi, s->res, "Playback", "activated");
+        agi_exec(s, "Playback", "activated");
     }
     else
     {
-        AGITool_exec(s->agi, s->res, "Playback", "de-activated");
+        agi_exec(s, "Playback", "de-activated");
     }
 }
 
@@ -1914,19 +1915,19 @@ void CFVMailSet(agi_session_t *s)
     sipId = strtok(NULL,"-");
 
     // if the action is ON then activate otherwise de-activate
-    AGITool_exec(s->agi, s->res, "Playback", "call-forwarding");
+    agi_exec(s, "Playback", "call-forwarding");
 
     // 18 & 19 (ON/OFF) and 20 (toggle self) are the documented ones 
 
     if (!strncmp(PARM_CMD, "*18*", 3)) // toggle ON
     {
         DBPut(s, "cfim", sipId, fromNum);
-        AGITool_exec(s->agi, s->res, "Playback", "activated");
+        agi_exec(s, "Playback", "activated");
     }
     else // toggle OFF
     {
         DBPut(s, "cfim", sipId, "");
-        AGITool_exec(s->agi, s->res, "Playback", "de-activated");
+        agi_exec(s, "Playback", "de-activated");
     }
 }
 
@@ -1948,16 +1949,16 @@ void CFVMailToggle(agi_session_t *s)
     sipId = strtok(NULL,"-");
 
     // if the property is empty in the DB then activate otherwise de-activate
-    AGITool_exec(s->agi, s->res, "Playback", "call-forwarding");
+    agi_exec(s, "Playback", "call-forwarding");
     if (!strcmp(DBGet(s, "cfim", sipId), ""))
     {
         DBPut(s, "cfim", sipId, fromNum);
-        AGITool_exec(s->agi, s->res, "Playback", "activated");
+        agi_exec(s, "Playback", "activated");
     }
     else
     {
         DBPut(s, "cfim", sipId, "");
-        AGITool_exec(s->agi, s->res, "Playback", "de-activated");
+        agi_exec(s, "Playback", "de-activated");
     }
 }
 
@@ -1976,11 +1977,11 @@ void FollowMe(agi_session_t *s)
     //  get real fromnum
     strlcpy(realFromNum, myClusterId, sizeof(realFromNum));
     strcat(realFromNum, fromNum);
-    AGITool_exec(s->agi, s->res, "VMauthenticate", realFromNum);
+    agi_exec(s, "VMauthenticate", realFromNum);
     if (!atoi(s->res->result))
     {
         DBPut(s, "cfim", realFromNum, toNum);
-        AGITool_exec(s->agi, s->res, "Playback", "activated");
+        agi_exec(s, "Playback", "activated");
     }
 */
 }
@@ -2000,8 +2001,8 @@ void CFOff(agi_session_t *s)
 
     DBPut(s, "cfim", sipId, "");
     DBPut(s, "cfbs", sipId, "");
-    AGITool_exec(s->agi, s->res, "Playback", "call-forwarding");
-    AGITool_exec(s->agi, s->res, "Playback", "de-activated");
+    agi_exec(s, "Playback", "call-forwarding");
+    agi_exec(s, "Playback", "de-activated");
 }
 
 void SetRingDelay(agi_session_t *s)
@@ -2026,8 +2027,8 @@ void SetRingDelay(agi_session_t *s)
     strncpy(ringDelay,PARM_CMD + 4,sizeof(ringDelay));
 
     DBPut(s, "ringdelay", sipId, ringDelay);
-    AGITool_exec(s->agi, s->res, "Playback", "silence/1");
-    AGITool_exec(s->agi, s->res, "Playback", "activated");
+    agi_exec(s, "Playback", "silence/1");
+    agi_exec(s, "Playback", "activated");
 }
 
 char *StripPreselect(char *preSel, char *number)
@@ -2067,26 +2068,26 @@ void Ingress(agi_session_t *s)
      */
     if (g_cluster_cfg.maxin_str[0] != '\0')
     {
-        AGITool_set_variable(s->agi, s->res, "GROUP(inbound)", "inbound");
-        AGITool_get_variable(s->agi, s->res, "GROUP_COUNT(inbound)"); // GROUP_COUNT(inbound) is the number of active inbound calls
+        agi_set_variable(s, "GROUP(inbound)", "inbound");
+        agi_get_variable(s, "GROUP_COUNT(inbound)"); // GROUP_COUNT(inbound) is the number of active inbound calls
 
         if (atoi(s->res->data) > atoi(g_cluster_cfg.maxin_str))
         {
-            AGITool_exec(s->agi, s->res, "Playtones", "busy");
-            AGITool_exec(s->agi, s->res, "Busy", "");
+            agi_exec(s, "Playtones", "busy");
+            agi_exec(s, "Busy", "");
             return;
         }
     }
 
     // set the dialled number (DDI) in the CDR userfield
     strlcat(setcdrcmduser, PARM_KEY, sizeof(setcdrcmduser));
-    AGITool_exec(s->agi, s->res, "Set", setcdrcmduser);
+    agi_exec(s, "Set", setcdrcmduser);
 
     if (g_cluster_cfg.dynamicfeatures[0] != '\0')
     {
         char df_ingress[640];
         snprintf(df_ingress, sizeof(df_ingress), "__DYNAMIC_FEATURES=%s", g_cluster_cfg.dynamicfeatures);
-        AGITool_exec(s->agi, s->res, "Set", df_ingress);
+        agi_exec(s, "Set", df_ingress);
     }
 
     sqlQueryBind1("SELECT technology,tag,inprefix,alertinfo,moh,swoclip FROM inroutes WHERE pkey=?", PARM_KEY);
@@ -2097,7 +2098,7 @@ void Ingress(agi_session_t *s)
     strlcpy(moh, rescols[4], sizeof(moh));
     strlcpy(swoclip, rescols[5], sizeof(swoclip));
 
-    AGITool_set_variable(s->agi, s->res, "__MOH", moh);
+    agi_set_variable(s, "__MOH", moh);
 
     // CLIP Processing
 
@@ -2112,7 +2113,7 @@ void Ingress(agi_session_t *s)
         strlcat(prefix, s->call->callerid, sizeof(prefix));
         strlcpy(s->call->callerid, prefix, sizeof(s->call->callerid));
         snprintf(clidstrng, sizeof(clidstrng), "CALLERID(number)=%s", s->call->callerid);
-        AGITool_exec(s->agi, s->res, "Set", clidstrng);
+        agi_exec(s, "Set", clidstrng);
     }
 
     //...check CLIP routing and recurse if set
@@ -2127,9 +2128,9 @@ void Ingress(agi_session_t *s)
                 strlcpy(clicluster, sqlQueryBind1("SELECT cluster FROM inroutes WHERE pkey=?", s->call->callerid), sizeof(clicluster));
                 if (!strcmp(s->call->myCluster, clicluster))
                 {
-                    AGITool_set_priority(s->agi, s->res, 1);
-                    AGITool_set_extension(s->agi, s->res, s->call->callerid);
-                    AGITool_set_context(s->agi, s->res, "mainmenu");
+                    agi_set_priority(s, 1);
+                    agi_set_extension(s, s->call->callerid);
+                    agi_set_context(s, "mainmenu");
                     return;
                 }
             }
@@ -2140,7 +2141,7 @@ void Ingress(agi_session_t *s)
     if (strcmp(tag, ""))
     {
         strlcpy(s->call->calleridname, tag, sizeof(s->call->calleridname));
-        AGITool_exec(s->agi, s->res, "SetCallerPres", "allowed");
+        agi_exec(s, "SetCallerPres", "allowed");
     }
     if (!strcmp(s->call->calleridname, "unknown"))
     {
@@ -2151,36 +2152,36 @@ void Ingress(agi_session_t *s)
     if (strcmp(s->call->calleridname, ""))
     {
         snprintf(clidstrng, sizeof(clidstrng), "CALLERID(name)=%s", s->call->calleridname);
-        AGITool_exec(s->agi, s->res, "Set", clidstrng);
+        agi_exec(s, "Set", clidstrng);
     }
 
     if (strcmp(g_cluster_cfg.lterm_str, "YES"))
     {
-        AGITool_answer(s->agi, s->res);
-        // AGITool_exec(s->agi,s->res,"Ringing","");
+        agi_answer(s);
+        // agi_exec(s, "Ringing","");
     }
     // cause a ring for voip lines if requested
     if (!strcmp(technology, "SIP"))
     {
         if (strcmp(g_cluster_cfg.ringdelay_str, "0"))
         {
-            AGITool_exec(s->agi, s->res, "Ringing", "");
-            AGITool_exec(s->agi, s->res, "Wait", g_cluster_cfg.ringdelay_str);
+            agi_exec(s, "Ringing", "");
+            agi_exec(s, "Wait", g_cluster_cfg.ringdelay_str);
         }
     }
     if (!strcmp(technology, "IAX2"))
     {
         if (strcmp(g_cluster_cfg.ringdelay_str, "0"))
         {
-            AGITool_exec(s->agi, s->res, "Ringing", "");
-            AGITool_exec(s->agi, s->res, "Wait", g_cluster_cfg.ringdelay_str);
+            agi_exec(s, "Ringing", "");
+            agi_exec(s, "Wait", g_cluster_cfg.ringdelay_str);
         }
     }
 
     // distinctive ring (if present)
     if (strcmp(alertinfo, ""))
     {
-        AGITool_exec(s->agi, s->res, "SIPAddHeader", alertinfo);
+        agi_exec(s, "SIPAddHeader", alertinfo);
     }
 
     CheckState(s, PARM_KEY);
@@ -2211,9 +2212,9 @@ void CheckState(agi_session_t *s, char *remotenum)
     if (!strcmp(state, "CLOSED"))
     {
         //   PBX is in hard CLOSED state - use closed route;
-        AGITool_set_priority(s->agi, s->res, 1);
-        AGITool_set_extension(s->agi, s->res, closeroute);
-        AGITool_set_context(s->agi, s->res, s->call->myClusterContext);
+        agi_set_priority(s, 1);
+        agi_set_extension(s, closeroute);
+        agi_set_context(s, s->call->myClusterContext);
     }
     else
 /**
@@ -2226,9 +2227,9 @@ void CheckState(agi_session_t *s, char *remotenum)
         if (!strcmp(state, "CLOSED"))
         {
             //   Closed(remotenum);
-            AGITool_set_priority(s->agi, s->res, 1);
-            AGITool_set_extension(s->agi, s->res, closeroute);
-            AGITool_set_context(s->agi, s->res, s->call->myClusterContext);
+            agi_set_priority(s, 1);
+            agi_set_extension(s, closeroute);
+            agi_set_context(s, s->call->myClusterContext);
         }
         else
 /**
@@ -2236,9 +2237,9 @@ void CheckState(agi_session_t *s, char *remotenum)
  */
         {
             //    Open(remotenum);
-            AGITool_set_priority(s->agi, s->res, 1);
-            AGITool_set_extension(s->agi, s->res, openroute);
-            AGITool_set_context(s->agi, s->res, s->call->myClusterContext);
+            agi_set_priority(s, 1);
+            agi_set_extension(s, openroute);
+            agi_set_context(s, s->call->myClusterContext);
         }
     }
 }
@@ -2275,7 +2276,7 @@ char * CheckTime(agi_session_t *s, char *cluster)
     {
         return "CLOSED";
     }
-    AGITool_exec(s->agi, s->res, "NoOp", "NO MTIME - returning OPEN");
+    agi_exec(s, "NoOp", "NO MTIME - returning OPEN");
     return "OPEN";
 }
 
@@ -2329,8 +2330,8 @@ void IVR(agi_session_t *s, char *ivrname)
             }
         }
 
-        AGITool_exec(s->agi, s->res, "Wait", "0.5");
-        AGITool_answer(s->agi, s->res);
+        agi_exec(s, "Wait", "0.5");
+        agi_answer(s);
 
         strlcpy(greetnum, sqlQueryBind1("SELECT greetnum FROM ivrmenu WHERE pkey=?", PARM_KEY), sizeof(greetnum));
         snprintf(msg, sizeof(msg), "%s%s/usergreeting%s", SOUNDIR, s->call->myCluster, greetnum);
@@ -2348,7 +2349,7 @@ void IVR(agi_session_t *s, char *ivrname)
 
         if (strcmp(sqlQueryBind1("SELECT listenforext FROM ivrmenu WHERE pkey=?", PARM_KEY), "YES"))
         {
-            AGITool_stream_file(s->agi, s->res, msg, optionStr, 0);
+            agi_stream_file(s, msg, optionStr, 0);
             if (strcmp(optionStr, "") && atoi(s->res->result))
             {
                 snprintf(dtmf, sizeof(dtmf), "%c", atoi(s->res->result));
@@ -2357,7 +2358,7 @@ void IVR(agi_session_t *s, char *ivrname)
             }
             if (strcmp(optionStr, ""))
             {
-                AGITool_stream_file(s->agi, s->res, ivrsilence, optionStr, 0);
+                agi_stream_file(s, ivrsilence, optionStr, 0);
                 if (strcmp(optionStr, "") && atoi(s->res->result))
                 {
                     snprintf(dtmf, sizeof(dtmf), "%c", atoi(s->res->result));
@@ -2372,16 +2373,16 @@ void IVR(agi_session_t *s, char *ivrname)
 
         else
         {
-            AGITool_get_data(s->agi, s->res, msg, ivrdigitwait, 4);
+            agi_get_data(s, msg, ivrdigitwait, 4);
             if (atoi(s->res->result))
             {
                 // check if it's an extension
                 snprintf(dtmf, sizeof(dtmf), "%s", s->res->result);
                 if (strlen(dtmf) > 1)
                 {
-                    AGITool_set_priority(s->agi, s->res, 1);
-                    AGITool_set_extension(s->agi, s->res, dtmf);
-                    AGITool_set_context(s->agi, s->res, s->call->myClusterContext);
+                    agi_set_priority(s, 1);
+                    agi_set_extension(s, dtmf);
+                    agi_set_context(s, s->call->myClusterContext);
                     return;
                 }
                 IVRAction(s, PARM_KEY, dtmf);
@@ -2454,7 +2455,7 @@ void IVRAction(agi_session_t *s, char *menu, char *press)
         strlcpy(alert, sqlQueryBind1(myQuery, menu), sizeof(alert));
         if (strcmp(alert, ""))
         {
-            AGITool_exec(s->agi, s->res, "SIPAddHeader", alert);
+            agi_exec(s, "SIPAddHeader", alert);
         }
         snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM ivrmenu WHERE pkey=?", tag);
         strcpy(tagID, sqlQueryBind1(myQuery, menu));
@@ -2473,14 +2474,14 @@ void IVRAction(agi_session_t *s, char *menu, char *press)
     if (strcmp(s->call->calleridname, ""))
     {
         snprintf(clidstrng, sizeof(clidstrng), "CALLERID(name)=%s", s->call->calleridname);
-        AGITool_exec(s->agi, s->res, "Set", clidstrng);
+        agi_exec(s, "Set", clidstrng);
     }
     //  Route it
     if (strcmp(action, "None"))
     {
-        AGITool_set_priority(s->agi, s->res, 1);
-        AGITool_set_extension(s->agi, s->res, action);
-        AGITool_set_context(s->agi, s->res, s->call->myClusterContext);
+        agi_set_priority(s, 1);
+        agi_set_extension(s, action);
+        agi_set_context(s, s->call->myClusterContext);
         return;
     }
     // bad key press?
@@ -2492,7 +2493,7 @@ char * DBGet(agi_session_t *s, char *family, char *key)
 
     DebugFunctionTrace(__FUNCTION__);
 
-    AGITool_database_get(s->agi, s->res, family, key);
+    agi_database_get(s, family, key);
     return s->res->data;
 }
 
@@ -2501,7 +2502,7 @@ void DBPut(agi_session_t *s, char *family, char *key, char *val)
 
     DebugFunctionTrace(__FUNCTION__);
 
-    AGITool_database_put(s->agi, s->res, family, key, val);
+    agi_database_put(s, family, key, val);
 }
 
 void DBDel(agi_session_t *s, char *family, char *key)
@@ -2509,7 +2510,7 @@ void DBDel(agi_session_t *s, char *family, char *key)
 
     DebugFunctionTrace(__FUNCTION__);
 
-    AGITool_database_del(s->agi, s->res, family, key);
+    agi_database_del(s, family, key);
 }
 
 /***********************************************************************
@@ -2553,7 +2554,7 @@ void OutQmt(agi_session_t *s)
     //  set abstimeout
     //
     snprintf(abstimeout, sizeof(abstimeout), "TIMEOUT(absolute)=%i", abstimeint);
-    AGITool_exec(s->agi, s->res, "Set", abstimeout);
+    agi_exec(s, "Set", abstimeout);
     //
     //    initial log entries for queuemetrics
     //
@@ -2567,7 +2568,7 @@ void OutQmt(agi_session_t *s)
     if (signal(SIGHUP, sig_handler) == SIG_ERR)
     {
         snprintf(vmsg, sizeof(vmsg), "Cant catch SIGHUP!!");
-        AGITool_verbose(s->agi, s->res, vmsg, 1);
+        agi_verbose(s, vmsg, 1);
     }
 
     signal(SIGHUP, SIG_IGN);
@@ -2589,7 +2590,7 @@ void OutQmt(agi_session_t *s)
     //
     now = time(0);
     nowend = now;
-    AGITool_get_variable(s->agi, s->res, "ANSWEREDTIME"); //Asterisk varaiable set when a queue ends
+    agi_get_variable(s, "ANSWEREDTIME"); //Asterisk varaiable set when a queue ends
     answeredtime = atoi(s->res->data);
 
     if (answeredtime == 0)
@@ -2654,23 +2655,23 @@ void outboundClip(agi_session_t *s, char *key)
 	if (strcmp(clidline, "")) {
 		strcpy(clidwork, clidline);
 		sprintf (vmsg,"trunks CLID  %s found for outbound call, using key %s", clidwork, key);
-		AGITool_verbose(s->agi,s->res,vmsg,1);
+		agi_verbose(s, vmsg,1);
 	}
 	else {
 		sprintf (vmsg,"No trunks CLID found for outbound call, using key %s", key);
-		AGITool_verbose(s->agi,s->res,vmsg,1);
+		agi_verbose(s, vmsg,1);
 	}
 
 
 	// If there is a cluster CLID then it trumps the line 
 	if (strcmp(s->call->myClusterclid, "")) {
 		sprintf (vmsg,"Cluster CLID %s found", s->call->myClusterclid);
-		AGITool_verbose(s->agi,s->res,vmsg,1);
+		agi_verbose(s, vmsg,1);
 		strcpy(clidwork, s->call->myClusterclid);
 	}
 	else {
 		sprintf (vmsg,"no cluster CLID found for outbound call, using key %s", key);
-		AGITool_verbose(s->agi,s->res,vmsg,1);
+		agi_verbose(s, vmsg,1);
 	}
 
 
@@ -2688,15 +2689,15 @@ void outboundClip(agi_session_t *s, char *key)
 	if (strcmp(clidphone, "") && (strlen(clidphone) > 5)) {
 		strcpy(clidwork, clidphone);
 		sprintf (vmsg,"Extension CLID %s found for outbound call, using key %s", clidwork, key);
-		AGITool_verbose(s->agi,s->res,vmsg,1);
+		agi_verbose(s, vmsg,1);
 	}
 	else {
 		sprintf (vmsg,"No PSTN extension CLID found for outbound call, using clid %s", clidphone);
-		AGITool_verbose(s->agi,s->res,vmsg,1);
+		agi_verbose(s, vmsg,1);
 	}
 
 	sprintf (vmsg,"Phase 1 CLID is %s for outbound call, using key %s", clidwork, key);
-	AGITool_verbose(s->agi,s->res,vmsg,1);
+	agi_verbose(s, vmsg,1);
 
 	// At this point we should have a CLID in clidwork if we don't then we should just go with what we were given 
 	// because we can do no more.
@@ -2720,9 +2721,9 @@ void outboundClip(agi_session_t *s, char *key)
 		// If this is a locally originated call then we can use the CLID we found
 		if (s->call->caller_is_local) {
 			sprintf (vmsg,"Using CLID %s for outbound call, using key %s", clidwork, key);
-			AGITool_verbose(s->agi,s->res,vmsg,1);
+			agi_verbose(s, vmsg,1);
 			sprintf(clidstrng,"CALLERID(number)=%s",clidwork);
-			AGITool_exec(s->agi,s->res,"Set", clidstrng);		
+			agi_exec(s, "Set", clidstrng);		
 		
 			// if the RDNIS is set (which covers local diversions) then reset it to the CLID to make it safe.  
 			// It will look odd because the DIVERT header will be the same as the FROM header but it is necessary 
@@ -2731,9 +2732,9 @@ void outboundClip(agi_session_t *s, char *key)
 		
 			if (s->call->rdnis_is_set) {
 				sprintf (vmsg,"Using CLID %s to override local RDNIS", clidwork);
-				AGITool_verbose(s->agi,s->res,vmsg,1);
+				agi_verbose(s, vmsg,1);
 				sprintf(clidstrng,"CALLERID(RDNIS)=%s",clidwork);
-				AGITool_exec(s->agi,s->res,"Set", clidstrng);
+				agi_exec(s, "Set", clidstrng);
 			}
 		}
 		// if the inbound callerid is a real number then this is a hairpin call so set the RDNIS to our CLID to create a 
@@ -2741,13 +2742,13 @@ void outboundClip(agi_session_t *s, char *key)
 		
 		else {
 			sprintf(clidstrng,"CALLERID(RDNIS)=%s",clidwork);
-			AGITool_exec(s->agi,s->res,"Set", clidstrng);
+			agi_exec(s, "Set", clidstrng);
 		}
 	}   
 	else {
 		// we have no CLID to set so just log it
 		sprintf (vmsg,"No override CLID found for outbound call, using key %s", key);
-		AGITool_verbose(s->agi,s->res,vmsg,1);
+		agi_verbose(s, vmsg,1);
 	}
 	return;
 }
