@@ -1160,10 +1160,11 @@ void OutVoip(agi_session_t *s, char *key)
     char preSel[MAX_PRESEL_LEN] = {'\0'};
     char recRet[8] = {'\0'};
 
-    sqlQueryBind1("SELECT username,peername,callprogress,desc,transform,match,technology FROM trunks WHERE pkey=?", key);
-    strlcpy(username, rescols[0], sizeof(username)); 
-    strlcpy(peername, rescols[1], sizeof(peername)); 
-    strlcpy(callprogress, rescols[3], sizeof(callprogress));
+    /* trunks.description (not legacy "desc") — peername falls back to description if blank. */
+    sqlQueryBind1("SELECT username,peername,callprogress,description,transform,match,technology FROM trunks WHERE pkey=?", key);
+    strlcpy(username, rescols[0], sizeof(username));
+    strlcpy(peername, rescols[1], sizeof(peername));
+    strlcpy(callprogress, rescols[2], sizeof(callprogress));
     strlcpy(desc, rescols[3], sizeof(desc));
     strlcpy(transform, rescols[4], sizeof(transform));
     strlcpy(preSel, rescols[5], sizeof(preSel));    //match
