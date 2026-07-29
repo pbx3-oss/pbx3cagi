@@ -1542,16 +1542,28 @@ void PrepDial(agi_session_t *s, char *number, char *type, char *twin, char *vmbo
  *  domain-aware (Dial(PJSIP/shortuid) alone uses AOR contact @VIP → 404
  *  when multiple tenants share one instance/setid). Singleton (no SBC)
  *  keeps Dial(PJSIP/shortuid) and uses the registered contact directly.
+ *
+ *  WebRTC (device=WebRTC) registers on the instance WSS transport — not via
+ *  SBC usrloc. Forcing sip:shortuid@tenant.fqdn makes Asterisk dial the FQDN
+ *  instead of the WS contact → outbound-auth fail → NOANSWER/VM. Skip the
+ *  FQDN suffix for WebRTC so Dial uses the registered WSS contact.
  */
     strlcpy(dialString, SIPDRIVER, sizeof(dialString));
     strlcat(dialString, "/", sizeof(dialString));
     strlcat(dialString, number, sizeof(dialString));
     if (pbx3_fleet_mode() && g_cluster_cfg.fqdn[0] != '\0')
     {
-        strlcat(dialString, "/sip:", sizeof(dialString));
-        strlcat(dialString, number, sizeof(dialString));
-        strlcat(dialString, "@", sizeof(dialString));
-        strlcat(dialString, g_cluster_cfg.fqdn, sizeof(dialString));
+        char device[64] = {'\0'};
+        sqlQueryBind2("SELECT device FROM ipphone WHERE shortuid=? AND cluster=?",
+                      number, s->call->myCluster);
+        strlcpy(device, rescols[0], sizeof(device));
+        if (strcmp(device, "WebRTC") != 0)
+        {
+            strlcat(dialString, "/sip:", sizeof(dialString));
+            strlcat(dialString, number, sizeof(dialString));
+            strlcat(dialString, "@", sizeof(dialString));
+            strlcat(dialString, g_cluster_cfg.fqdn, sizeof(dialString));
+        }
     }
 
 /**
