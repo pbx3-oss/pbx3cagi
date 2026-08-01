@@ -1,3 +1,11 @@
+pbx3cagi (1.0.0-7) stable; urgency=medium
+
+  * PrepDial: skip /sip:user@tenant.fqdn suffix when ipphone.device=WebRTC so
+    Dial uses the WSS registered contact (fleet multi-tenant AoR stays for
+    desk phones). Tip 3a9b7d7.
+
+ -- KoKo <admin@aelintra.com>  Sat, 01 Aug 2026 16:30:00 +0000
+
 pbx3cagi (1.0.0-6) stable; urgency=medium
 
   * PrepDial tenant-AoR URI only when pbx3_fleet_mode() (Egress / PBX3_FLEET_MODE).
