@@ -33,7 +33,10 @@ if [[ ! -f "$PKG/prebuilt/agi-bin/pbx3cagi.arm64" ]]; then
 fi
 
 cd "$PKG"
+# debian/files accumulates prior debuild outputs; stale arch-named .deb lines
+# make dpkg-genbuildinfo fail (e.g. leftover 1.0.0-1_arm64.deb from before Architecture: all).
 rm -rf debian/pbx3cagi debian/.debhelper
+rm -f debian/files debian/*.substvars
 debuild -us -uc -b
 
 echo ""
