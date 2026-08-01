@@ -2154,7 +2154,7 @@ void Ingress(agi_session_t *s)
     if (strcmp(tag, ""))
     {
         strlcpy(s->call->calleridname, tag, sizeof(s->call->calleridname));
-        agi_exec(s, "SetCallerPres", "allowed");
+        agi_exec(s, "Set", "CALLERID(pres)=allowed");
     }
     if (!strcmp(s->call->calleridname, "unknown"))
     {

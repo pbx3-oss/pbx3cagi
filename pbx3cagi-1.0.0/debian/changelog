@@ -1,3 +1,10 @@
+pbx3cagi (1.0.0-8) stable; urgency=medium
+
+  * Alphatag/CLIP: replace removed Asterisk 20 SetCallerPres app with
+    Set(CALLERID(pres)=allowed) via the CALLERID() function.
+
+ -- KoKo <admin@aelintra.com>  Sat, 01 Aug 2026 20:05:00 +0000
+
 pbx3cagi (1.0.0-7) stable; urgency=medium
 
   * PrepDial: skip /sip:user@tenant.fqdn suffix when ipphone.device=WebRTC so
