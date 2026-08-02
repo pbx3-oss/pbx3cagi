@@ -1,3 +1,10 @@
+pbx3cagi (1.0.0-9) stable; urgency=medium
+
+  * Mangle: fix DNID transform truncation (strlcat into right with sizeof
+    pointer) — UK Egress 0:+44 was dialling +441924 instead of full E.164.
+
+ -- KoKo <admin@aelintra.com>  Sun, 02 Aug 2026 23:10:00 +0000
+
 pbx3cagi (1.0.0-8) stable; urgency=medium
 
   * Alphatag/CLIP: replace removed Asterisk 20 SetCallerPres app with

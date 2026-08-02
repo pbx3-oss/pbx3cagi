@@ -466,8 +466,13 @@ char *Mangle(agi_session_t *s, char *preSel, char *transformList, char *data)
             }
             if (right)
             {
-                strlcat(right, operand, sizeof(right));
-                strlcpy(operand, right, sizeof(operand));
+                /* Build in a sized buffer. Never strlcat(right, …, sizeof(right)):
+                 * right is a char* into transformArr, so sizeof(right) is only
+                 * the pointer width (8 on aarch64) — truncated UK DNID to +441924. */
+                char mangled[MAX_NUM_LEN];
+                strlcpy(mangled, right, sizeof(mangled));
+                strlcat(mangled, operand, sizeof(mangled));
+                strlcpy(operand, mangled, sizeof(operand));
             }
         }
     }
