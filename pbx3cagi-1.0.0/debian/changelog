@@ -1,3 +1,11 @@
+pbx3cagi (1.0.0-10) stable; urgency=medium
+
+  * PrepDial: fleet mode always Dial(PJSIP/shortuid/sip:shortuid@tenant.fqdn)
+    (including WebRTC). Edge WSS contacts are RFC dummy 192.0.2.x; SBC usrloc
+    owns the real path. Replaces 1.0.0-7 WebRTC skip of the FQDN suffix.
+
+ -- KoKo <admin@aelintra.com>  Mon, 03 Aug 2026 13:20:00 +0000
+
 pbx3cagi (1.0.0-9) stable; urgency=medium
 
   * Mangle: fix DNID transform truncation (strlcat into right with sizeof

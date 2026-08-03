@@ -1544,31 +1544,24 @@ void PrepDial(agi_session_t *s, char *number, char *type, char *twin, char *vmbo
 /**
  *  begin to set up the dialstring.
  *  Fleet only: keep tenant domain in the Request-URI so SBC usrloc is
- *  domain-aware (Dial(PJSIP/shortuid) alone uses AOR contact @VIP → 404
- *  when multiple tenants share one instance/setid). Singleton (no SBC)
- *  keeps Dial(PJSIP/shortuid) and uses the registered contact directly.
+ *  domain-aware (Dial(PJSIP/shortuid) alone uses AOR contact).
+ *  Singleton (no SBC) keeps Dial(PJSIP/shortuid) and uses the registered contact.
  *
- *  WebRTC (device=WebRTC) registers on the instance WSS transport — not via
- *  SBC usrloc. Forcing sip:shortuid@tenant.fqdn makes Asterisk dial the FQDN
- *  instead of the WS contact → outbound-auth fail → NOANSWER/VM. Skip the
- *  FQDN suffix for WebRTC so Dial uses the registered WSS contact.
+ *  WebRTC via edge WSS (W1): SIP.js registers Contact @192.0.2.x;transport=wss
+ *  (RFC dummy) while OpenSIPS holds the real WSS connection in location.
+ *  Dial(PJSIP/shortuid) alone → "No route to destination" → VM. Always use
+ *  sip:shortuid@tenant.fqdn in fleet mode so invite hits SBC lookup (same as desks).
+ *  Direct instance :8089 WSS (no SBC REGISTER) remains singleton Dial without FQDN.
  */
     strlcpy(dialString, SIPDRIVER, sizeof(dialString));
     strlcat(dialString, "/", sizeof(dialString));
     strlcat(dialString, number, sizeof(dialString));
     if (pbx3_fleet_mode() && g_cluster_cfg.fqdn[0] != '\0')
     {
-        char device[64] = {'\0'};
-        sqlQueryBind2("SELECT device FROM ipphone WHERE shortuid=? AND cluster=?",
-                      number, s->call->myCluster);
-        strlcpy(device, rescols[0], sizeof(device));
-        if (strcmp(device, "WebRTC") != 0)
-        {
-            strlcat(dialString, "/sip:", sizeof(dialString));
-            strlcat(dialString, number, sizeof(dialString));
-            strlcat(dialString, "@", sizeof(dialString));
-            strlcat(dialString, g_cluster_cfg.fqdn, sizeof(dialString));
-        }
+        strlcat(dialString, "/sip:", sizeof(dialString));
+        strlcat(dialString, number, sizeof(dialString));
+        strlcat(dialString, "@", sizeof(dialString));
+        strlcat(dialString, g_cluster_cfg.fqdn, sizeof(dialString));
     }
 
 /**
