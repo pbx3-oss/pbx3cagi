@@ -56,6 +56,19 @@ CREATE TABLE IF NOT EXISTS trunks (
     "active" TEXT DEFAULT 'YES'
 );
 
+CREATE TABLE IF NOT EXISTS dialalias (
+    "id" TEXT PRIMARY KEY,
+    "shortuid" TEXT UNIQUE,
+    "pkey" TEXT NOT NULL,
+    "active" TEXT DEFAULT 'YES',
+    "cluster" TEXT DEFAULT 'default',
+    "target_cluster" TEXT,
+    "target_fqdn" TEXT NOT NULL,
+    "cname" TEXT,
+    "description" TEXT,
+    UNIQUE("cluster", "pkey")
+);
+
 CREATE TABLE IF NOT EXISTS ipphone (
     "id" TEXT PRIMARY KEY,
     "shortuid" TEXT UNIQUE,
@@ -75,6 +88,7 @@ CREATE TABLE IF NOT EXISTS ipphone (
 );
 
 DELETE FROM ipphone;
+DELETE FROM dialalias;
 DELETE FROM trunks;
 DELETE FROM cluster;
 DELETE FROM globals;
@@ -87,6 +101,10 @@ INSERT INTO cluster (
 ) VALUES (
     'fix00000000000000000000002', 'testtn01', 'tenant01', 'Tenant 01', 'testtn01.pbx3.local', 'testtn01.pbx3.local', 1, 1, 'None', 'NO'
 );
+
+INSERT INTO dialalias (id, shortuid, pkey, active, cluster, target_fqdn, cname, description) VALUES
+    ('fix00000000000000000000010', 'tda0001', '81', 'YES', 'testtn01', 'sister.pbx3.local', 'Sister site', 'lab prefix 81'),
+    ('fix00000000000000000000011', 'tda0002', '82', 'NO', 'testtn01', 'sister.pbx3.local', 'Inactive', 'inactive prefix');
 
 INSERT INTO ipphone (
     id, shortuid, pkey, cluster, desc, cname, description, dvrvmail, devicerec, technology, callerid

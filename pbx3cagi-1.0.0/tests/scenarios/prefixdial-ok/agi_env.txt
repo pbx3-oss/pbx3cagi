@@ -1,0 +1,11 @@
+agi_network: no
+agi_channel: Local/test-harness-00000001;1
+agi_context: testtn01
+agi_extension: 811001
+agi_callerid: 1101
+agi_calleridname: Test Caller
+agi_uniqueid: test.harness.prefix.001
+agi_dnid: 811001
+agi_rdnis: unknown
+agi_type: Local
+agi_language: en
