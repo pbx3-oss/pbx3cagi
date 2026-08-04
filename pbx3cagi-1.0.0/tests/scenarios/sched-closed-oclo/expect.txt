@@ -1,0 +1,2 @@
+must SET EXTENSION 9001
+exit 0

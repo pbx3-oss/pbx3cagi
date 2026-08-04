@@ -49,6 +49,8 @@ static void cluster_cfg_apply_defaults(cluster_cfg_t *cfg)
     strlcpy(cfg->masteroclo, "AUTO", sizeof(cfg->masteroclo));
     cfg->oclo[0] = '\0';
     cfg->routeoverride[0] = '\0';
+    cfg->sched_mode[0] = '\0';
+    cfg->holiday_force_dest[0] = '\0';
 }
 
 static sqlite3 *g_sqlite_handle = NULL;
@@ -146,6 +148,7 @@ int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg)
         "play_transfer, voice_instr, bounce_alert, blind_busy, int_ring_delay, maxin, ringdelay, lterm, "
         "cfwd_progress, cfwd_answer, ivr_key_wait, ivr_digit_wait, syspass, spy_pass, dynamicfeatures, "
         "clusterclid, chanmax, usemohcustom, callrecord_1, masteroclo, oclo, routeoverride, "
+        "sched_mode, holiday_force_dest, "
         "fqdn, cname, domain, shortuid "
         "FROM cluster WHERE pkey='%s' OR shortuid='%s'",
         esc, esc);
@@ -300,11 +303,19 @@ int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg)
         strlcpy(cfg->routeoverride, t ? (const char *)t : "", sizeof(cfg->routeoverride));
     }
     {
+        const unsigned char *t = sqlite3_column_text(stmt, 28);
+        strlcpy(cfg->sched_mode, t ? (const char *)t : "", sizeof(cfg->sched_mode));
+    }
+    {
+        const unsigned char *t = sqlite3_column_text(stmt, 29);
+        strlcpy(cfg->holiday_force_dest, t ? (const char *)t : "", sizeof(cfg->holiday_force_dest));
+    }
+    {
         /* Prefer fqdn, then cname, else shortuid.domain (phones register as user@tenant.fqdn). */
-        const unsigned char *fq = sqlite3_column_text(stmt, 28);
-        const unsigned char *cn = sqlite3_column_text(stmt, 29);
-        const unsigned char *dom = sqlite3_column_text(stmt, 30);
-        const unsigned char *su = sqlite3_column_text(stmt, 31);
+        const unsigned char *fq = sqlite3_column_text(stmt, 30);
+        const unsigned char *cn = sqlite3_column_text(stmt, 31);
+        const unsigned char *dom = sqlite3_column_text(stmt, 32);
+        const unsigned char *su = sqlite3_column_text(stmt, 33);
         cfg->fqdn[0] = '\0';
         if (fq != NULL && fq[0] != '\0')
         {

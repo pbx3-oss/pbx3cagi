@@ -1,3 +1,10 @@
+pbx3cagi (1.0.0-12) stable; urgency=medium
+
+  * CheckState dual-read: route_profile + open/close columns; sched_mode;
+    holiday dest vs Q5 master force; multi-mode profile lookup (slice A).
+
+ -- KoKo <admin@aelintra.com>  Tue, 04 Aug 2026 20:30:00 +0000
+
 pbx3cagi (1.0.0-11) stable; urgency=medium
 
   * PrefixDial: tenant short dial (prefix + ext → ext@target_fqdn via

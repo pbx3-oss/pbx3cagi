@@ -2461,97 +2461,221 @@ void Ingress(agi_session_t *s)
     CheckState(s, PARM_KEY);
 }
 
+/**
+ * closed-like modes use closeroute when no profile line.
+ */
+static int mode_is_closed_like(const char *mode)
+{
+    if (mode == NULL || mode[0] == '\0')
+    {
+        return 0;
+    }
+    return (strcasecmp(mode, "closed") == 0);
+}
+
+/**
+ * Profile line for mode, else legacy openroute/closeroute.
+ */
+static void ResolveInboundDest(
+    agi_session_t *s,
+    const char *mode,
+    const char *route_profile,
+    const char *open_r,
+    const char *close_r,
+    char *dest,
+    size_t destlen)
+{
+    char effective_mode[32];
+    char defmode[32];
+
+    (void)s;
+    dest[0] = '\0';
+    strlcpy(effective_mode, (mode && mode[0]) ? mode : "open", sizeof(effective_mode));
+
+    if (route_profile != NULL && route_profile[0] != '\0')
+    {
+        sqlQueryBind2(
+            "SELECT destination FROM route_profile_line WHERE profile=? AND lower(mode)=lower(?) LIMIT 1",
+            route_profile,
+            effective_mode);
+        if (rescols[0][0] != '\0')
+        {
+            strlcpy(dest, rescols[0], destlen);
+            return;
+        }
+        /* Miss: try profile default_mode line. */
+        sqlQueryBind1(
+            "SELECT default_mode FROM route_profile WHERE shortuid=? LIMIT 1",
+            route_profile);
+        strlcpy(defmode, rescols[0][0] ? rescols[0] : "open", sizeof(defmode));
+        if (strcasecmp(defmode, effective_mode) != 0)
+        {
+            sqlQueryBind2(
+                "SELECT destination FROM route_profile_line WHERE profile=? AND lower(mode)=lower(?) LIMIT 1",
+                route_profile,
+                defmode);
+            if (rescols[0][0] != '\0')
+            {
+                strlcpy(dest, rescols[0], destlen);
+                return;
+            }
+        }
+        /* Still miss: closed-like → closed line, else open line. */
+        if (mode_is_closed_like(effective_mode))
+        {
+            sqlQueryBind1(
+                "SELECT destination FROM route_profile_line WHERE profile=? AND lower(mode)='closed' LIMIT 1",
+                route_profile);
+        }
+        else
+        {
+            sqlQueryBind1(
+                "SELECT destination FROM route_profile_line WHERE profile=? AND lower(mode)='open' LIMIT 1",
+                route_profile);
+        }
+        if (rescols[0][0] != '\0')
+        {
+            strlcpy(dest, rescols[0], destlen);
+            return;
+        }
+    }
+
+    /* Legacy dual-read columns. */
+    if (mode_is_closed_like(effective_mode))
+    {
+        strlcpy(dest, close_r && close_r[0] ? close_r : "None", destlen);
+    }
+    else
+    {
+        strlcpy(dest, open_r && open_r[0] ? open_r : "None", destlen);
+    }
+}
+
 void CheckState(agi_session_t *s, char *remotenum)
 {
 
     DebugFunctionTrace(__FUNCTION__);
 
-    char state[8] = {'\0'};
+    char state[32] = {'\0'};
     char cluster[MAX_CLUSTER_LEN] = {'\0'};
-    char rc_char[8] = {'\0'};
+    char route_profile[32] = {'\0'};
+    char entry_dest[64] = {'\0'};
+    char dest[64] = {'\0'};
+    char mode[32] = {'\0'};
+    char holiday_dest[64] = {'\0'};
 
-    sqlQueryBind1("SELECT cluster,openroute,closeroute FROM inroutes WHERE pkey=?", remotenum);
+    sqlQueryBind1(
+        "SELECT cluster,openroute,closeroute,route_profile,entry_dest FROM inroutes WHERE pkey=?",
+        remotenum);
     strlcpy(cluster, rescols[0], sizeof(cluster));
     strlcpy(openroute, rescols[1], sizeof(openroute));
     strlcpy(closeroute, rescols[2], sizeof(closeroute));
+    strlcpy(route_profile, rescols[3], sizeof(route_profile));
+    strlcpy(entry_dest, rescols[4], sizeof(entry_dest));
+
+    /* Prefer holiday_force_dest, else legacy routeoverride (dual-read). */
+    if (g_cluster_cfg.holiday_force_dest[0] != '\0')
+    {
+        strlcpy(holiday_dest, g_cluster_cfg.holiday_force_dest, sizeof(holiday_dest));
+    }
+    else if (g_cluster_cfg.routeoverride[0] != '\0')
+    {
+        strlcpy(holiday_dest, g_cluster_cfg.routeoverride, sizeof(holiday_dest));
+    }
 
 /**
- * Check the master timers first...
+ * Master / operator hard force (Q5): wins over holiday.
  */
-
     strlcpy(state, DBGet(s, "STAT", "OCSTAT"), sizeof(state));
-/**
- *  If the master timer is closed we simply take the closed route...
- */
-    if (!strcmp(state, "CLOSED"))
+    if (!strcasecmp(state, "CLOSED"))
     {
-        //   PBX is in hard CLOSED state - use closed route;
+        ResolveInboundDest(s, "closed", route_profile, openroute, closeroute, dest, sizeof(dest));
         agi_set_priority(s, 1);
-        agi_set_extension(s, closeroute);
+        agi_set_extension(s, dest);
         agi_set_context(s, s->call->myClusterContext);
+        return;
     }
-    else
-/**
- *      If we get to here, the master timer is set to AUTO (usual state), or OPEN.
- *      So, now we can check the timers for the cluster and branch accordingly
- *      First check for hard closed...
- */
+
+    /* Fixed entry destination (always-same DID) — no schedule. */
+    if (entry_dest[0] != '\0' && strcasecmp(entry_dest, "None") != 0)
     {
-        strlcpy(state, CheckTime(s, cluster), sizeof(state));
-        if (!strcmp(state, "CLOSED"))
-        {
-            //   Closed(remotenum);
-            agi_set_priority(s, 1);
-            agi_set_extension(s, closeroute);
-            agi_set_context(s, s->call->myClusterContext);
-        }
-        else
-/**
- *      So, the state must be OPEN/AUTO
- */
-        {
-            //    Open(remotenum);
-            agi_set_priority(s, 1);
-            agi_set_extension(s, openroute);
-            agi_set_context(s, s->call->myClusterContext);
-        }
+        agi_set_priority(s, 1);
+        agi_set_extension(s, entry_dest);
+        agi_set_context(s, s->call->myClusterContext);
+        return;
     }
+
+    /* Holiday dest override when not operator hard-forced. */
+    if (holiday_dest[0] != '\0' && strcasecmp(holiday_dest, "None") != 0)
+    {
+        agi_set_priority(s, 1);
+        agi_set_extension(s, holiday_dest);
+        agi_set_context(s, s->call->myClusterContext);
+        return;
+    }
+
+    strlcpy(mode, CheckTime(s, cluster), sizeof(mode));
+    ResolveInboundDest(s, mode, route_profile, openroute, closeroute, dest, sizeof(dest));
+    agi_set_priority(s, 1);
+    agi_set_extension(s, dest);
+    agi_set_context(s, s->call->myClusterContext);
 }
 
-char * CheckTime(agi_session_t *s, char *cluster)
+char *CheckTime(agi_session_t *s, char *cluster)
 {
 
     DebugFunctionTrace(__FUNCTION__);
 
-    char clusterdboclo[8] = {'\0'};
+    char clusterdboclo[32] = {'\0'};
+    static char mode_ret[32];
 
-    if (strcmp(g_cluster_cfg.routeoverride, ""))
-    {
-        strlcpy(closeroute, g_cluster_cfg.routeoverride, sizeof(closeroute));
-        return "CLOSED";
-    }
-
+    /*
+     * Holiday dest handled in CheckState (above schedule). Force mode path later.
+     * Tenant AstDB force CLOSED.
+     */
     strlcpy(clusterdboclo, DBGet(s, cluster, "OCSTAT"), sizeof(clusterdboclo));
-    if (!strcmp(clusterdboclo, "CLOSED"))
+    if (!strcasecmp(clusterdboclo, "CLOSED"))
     {
-        return "CLOSED";
+        strlcpy(mode_ret, "closed", sizeof(mode_ret));
+        return mode_ret;
     }
 
-    if (!strcmp(DBGet(s, s->call->myCluster, "OCSTAT"), "CLOSED"))
+    if (!strcasecmp(DBGet(s, s->call->myCluster, "OCSTAT"), "CLOSED"))
     {
-        return "CLOSED";
-    }
-    if (!strcmp(g_cluster_cfg.oclo, "OPEN"))
-    {
-        return "OPEN";
+        strlcpy(mode_ret, "closed", sizeof(mode_ret));
+        return mode_ret;
     }
 
-    if (!strcmp(g_cluster_cfg.oclo, "CLOSED"))
+    /* Prefer sched_mode (day-parts), else legacy oclo OPEN/CLOSED. */
+    if (g_cluster_cfg.sched_mode[0] != '\0')
     {
-        return "CLOSED";
+        strlcpy(mode_ret, g_cluster_cfg.sched_mode, sizeof(mode_ret));
+        /* normalize OPEN/CLOSED upper from historic dual-write */
+        if (!strcasecmp(mode_ret, "OPEN"))
+        {
+            strlcpy(mode_ret, "open", sizeof(mode_ret));
+        }
+        else if (!strcasecmp(mode_ret, "CLOSED"))
+        {
+            strlcpy(mode_ret, "closed", sizeof(mode_ret));
+        }
+        return mode_ret;
     }
-    agi_exec(s, "NoOp", "NO MTIME - returning OPEN");
-    return "OPEN";
+
+    if (!strcasecmp(g_cluster_cfg.oclo, "OPEN"))
+    {
+        strlcpy(mode_ret, "open", sizeof(mode_ret));
+        return mode_ret;
+    }
+
+    if (!strcasecmp(g_cluster_cfg.oclo, "CLOSED"))
+    {
+        strlcpy(mode_ret, "closed", sizeof(mode_ret));
+        return mode_ret;
+    }
+    agi_exec(s, "NoOp", "NO MTIME - returning open");
+    strlcpy(mode_ret, "open", sizeof(mode_ret));
+    return mode_ret;
 }
 
 void IVR(agi_session_t *s, char *ivrname)

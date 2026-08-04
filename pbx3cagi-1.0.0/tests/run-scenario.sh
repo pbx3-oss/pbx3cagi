@@ -19,6 +19,7 @@ if [[ ! -x "$PBX3CAGI" ]]; then
   make -C "$CSOURCE"
 fi
 
+export SCENARIO_NAME="$scenario"
 "$ROOT/tests/fixtures/setup-tenant-db.sh"
 
 workdir="$(mktemp -d)"

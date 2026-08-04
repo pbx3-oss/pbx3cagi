@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS cluster (
     "blind_busy" TEXT DEFAULT '',
     "int_ring_delay" INTEGER DEFAULT 20,
     "maxin" INTEGER DEFAULT 30,
-    "ringdelay" INTEGER DEFAULT 20,
+    "ringdelay" INTEGER DEFAULT 0,
     "lterm" INTEGER DEFAULT 0,
     "cfwd_progress" TEXT DEFAULT 'enabled',
     "cfwd_answer" TEXT DEFAULT 'enabled',
@@ -42,15 +42,16 @@ CREATE TABLE IF NOT EXISTS cluster (
     "usemohcustom" TEXT DEFAULT 'NO',
     "callrecord_1" TEXT DEFAULT 'None',
     "masteroclo" TEXT DEFAULT 'AUTO',
-    "oclo" TEXT DEFAULT '',
+    "oclo" TEXT DEFAULT 'OPEN',
+    "sched_mode" TEXT DEFAULT 'open',
     "routeoverride" TEXT DEFAULT '',
+    "holiday_force_dest" TEXT DEFAULT '',
     "voip_max" INTEGER DEFAULT 30,
     "cname" TEXT,
     "fqdn" TEXT,
     "domain" TEXT DEFAULT ''
 );
 
--- Minimal trunks table so PrepDial's active lookup prepares cleanly (no rows needed).
 CREATE TABLE IF NOT EXISTS trunks (
     "pkey" TEXT PRIMARY KEY,
     "active" TEXT DEFAULT 'YES'
@@ -87,6 +88,46 @@ CREATE TABLE IF NOT EXISTS ipphone (
     UNIQUE("cluster", "pkey")
 );
 
+CREATE TABLE IF NOT EXISTS route_profile (
+    "id" TEXT PRIMARY KEY,
+    "shortuid" TEXT UNIQUE,
+    "pkey" TEXT,
+    "cluster" TEXT DEFAULT 'default',
+    "name" TEXT,
+    "default_mode" TEXT DEFAULT 'open'
+);
+
+CREATE TABLE IF NOT EXISTS route_profile_line (
+    "id" TEXT PRIMARY KEY,
+    "shortuid" TEXT UNIQUE,
+    "profile" TEXT NOT NULL,
+    "cluster" TEXT DEFAULT 'default',
+    "mode" TEXT NOT NULL,
+    "destination" TEXT NOT NULL,
+    UNIQUE("profile", "mode")
+);
+
+CREATE TABLE IF NOT EXISTS inroutes (
+    "id" TEXT PRIMARY KEY,
+    "shortuid" TEXT UNIQUE,
+    "pkey" TEXT NOT NULL,
+    "active" TEXT DEFAULT 'YES',
+    "cluster" TEXT DEFAULT 'default',
+    "technology" TEXT DEFAULT 'DiD',
+    "tag" TEXT DEFAULT '',
+    "inprefix" TEXT DEFAULT '',
+    "alertinfo" TEXT DEFAULT '',
+    "moh" TEXT DEFAULT 'NO',
+    "swoclip" TEXT DEFAULT 'NO',
+    "openroute" TEXT DEFAULT 'None',
+    "closeroute" TEXT DEFAULT 'None',
+    "route_profile" TEXT DEFAULT '',
+    "entry_dest" TEXT DEFAULT ''
+);
+
+DELETE FROM inroutes;
+DELETE FROM route_profile_line;
+DELETE FROM route_profile;
 DELETE FROM ipphone;
 DELETE FROM dialalias;
 DELETE FROM trunks;
@@ -97,9 +138,11 @@ INSERT INTO globals (id, shortuid, pkey, sitename, fqdn, domain) VALUES
     ('fix00000000000000000000001', 'testgl01', 'global', 'Demo Test PBX', 'test.pbx3.local', 'pbx3.local');
 
 INSERT INTO cluster (
-    id, shortuid, pkey, cname, fqdn, domain, play_transfer, voice_instr, callrecord_1, usemohcustom
+    id, shortuid, pkey, cname, fqdn, domain, play_transfer, voice_instr, callrecord_1, usemohcustom,
+    oclo, sched_mode, ringdelay, routeoverride, holiday_force_dest
 ) VALUES (
-    'fix00000000000000000000002', 'testtn01', 'tenant01', 'Tenant 01', 'testtn01.pbx3.local', 'testtn01.pbx3.local', 1, 1, 'None', 'NO'
+    'fix00000000000000000000002', 'testtn01', 'tenant01', 'Tenant 01', 'testtn01.pbx3.local', 'testtn01.pbx3.local',
+    1, 1, 'None', 'NO', 'OPEN', 'open', 0, '', ''
 );
 
 INSERT INTO dialalias (id, shortuid, pkey, active, cluster, target_fqdn, cname, description) VALUES
@@ -111,3 +154,20 @@ INSERT INTO ipphone (
 ) VALUES
     ('fix00000000000000000000003', 'testex01', '1101', 'testtn01', 'Ext 1101', 'Ext 1101', 'Extension 1101', '1101', 'default', 'SIP', '1101'),
     ('fix00000000000000000000004', 'testex02', '1102', 'testtn01', 'Ext 1102', 'Ext 1102', 'Extension 1102', '1102', 'default', 'SIP', '1102');
+
+-- Day-parts lab DID pair: dual-read open/close columns + profile with lunch
+INSERT INTO route_profile (id, shortuid, pkey, cluster, name, default_mode) VALUES
+    ('fix00000000000000000000020', 'rpopen01', 'rpopen01', 'testtn01', 'Lab dayparts', 'open');
+
+INSERT INTO route_profile_line (id, shortuid, profile, cluster, mode, destination) VALUES
+    ('fix00000000000000000000021', 'rplnopen', 'rpopen01', 'testtn01', 'open', '1101'),
+    ('fix00000000000000000000022', 'rplnclos', 'rpopen01', 'testtn01', 'closed', '9001'),
+    ('fix00000000000000000000023', 'rplnlunc', 'rpopen01', 'testtn01', 'lunch', '1102');
+
+-- Lab spare DID form (digits) used in handoff
+INSERT INTO inroutes (
+    id, shortuid, pkey, cluster, technology, openroute, closeroute, route_profile, swoclip, moh
+) VALUES
+    ('fix00000000000000000000030', 'indid01', '441924910444', 'testtn01', 'DiD', '1101', '9001', 'rpopen01', 'NO', 'NO'),
+    -- Legacy-only DID (no profile) for dual-read fallback
+    ('fix00000000000000000000031', 'indid02', '441924999999', 'testtn01', 'DiD', '1101', '9001', '', 'NO', 'NO');

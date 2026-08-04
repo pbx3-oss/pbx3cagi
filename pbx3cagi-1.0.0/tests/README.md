@@ -69,8 +69,14 @@ Scenarios use **`astdb.json`** per scenario (`family/key` → value). See `fixtu
 | `dial-queue-predial` | Dial … queue | Phase E: `PBX3_DIAL` = `PJSIP/suid,,`; no `EXEC Dial` |
 | `postdial-noanswer-vm` | PostDial + `DIALSTATUS=NOANSWER` | `EXEC Voicemail` |
 | `postdial-answer-noop` | PostDial + `DIALSTATUS=ANSWER` | no Voicemail / Dial / Playback |
+| `sched-open-legacy` | Ingress | No profile → openroute |
+| `sched-closed-oclo` | Ingress + `seed_patch.sql` | closed → closeroute |
+| `sched-open-profile` | Ingress | profile open → dest |
+| `sched-mode-lunch-profile` | Ingress + patch | `sched_mode=lunch` → profile line |
+| `force-master-closed-over-holiday` | Ingress | Q5 master force beats holiday dest |
+| `holiday-force-dest` | Ingress | Holiday dest when AUTO |
 
-Optional per-scenario: **`variables.json`** (GET VARIABLE replies), **`env.json`** (process env).
+Optional per-scenario: **`variables.json`** (GET VARIABLE replies), **`env.json`** (process env), **`seed_patch.sql`**.
 
 ## Layout
 
