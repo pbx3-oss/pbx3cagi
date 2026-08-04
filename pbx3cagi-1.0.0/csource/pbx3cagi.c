@@ -129,6 +129,7 @@ typedef struct {
 static void cmd_OutTrunk(agi_session_t *s) { OutTrunk(s, PARM_KEY); }
 static void cmd_Dial(agi_session_t *s) { PrepDial(s, PARM_KEY, PARM_PM1, "", ""); }
 static void cmd_IVR(agi_session_t *s) { IVR(s, PARM_KEY); }
+static void cmd_PrefixDial(agi_session_t *s) { PrefixDial(s); }
 
 static const agi_cmd_entry_t agi_cmd_table[] = {
     { 1, "OutTrunk", cmd_OutTrunk },
@@ -139,6 +140,7 @@ static const agi_cmd_entry_t agi_cmd_table[] = {
     { 6, "IVR", cmd_IVR },
     { 7, "OutQmt", OutQmt },
     { 8, "PostDial", PostDial },
+    { 9, "PrefixDial", cmd_PrefixDial },
     { 18, NULL, CFVMailSet },
     { 19, NULL, CFVMailSet },
     { 20, NULL, CFVMailToggle },
@@ -1146,6 +1148,187 @@ void OutTrunk(agi_session_t *s, char *key)
             }
         }
     }
+}
+
+/**
+ * Tenant short dial (PrefixDial) — fleet only.
+ * GenAst: exten => _81X.,1,agi(...,PrefixDial,81,{cluster},,,)
+ * DNID 811000 → remainder 1000 → Dial PJSIP/Egress/sip:1000@{target_fqdn}
+ * CallerID num = phone_suid@calling_tenant_fqdn; name = "pkey human".
+ * Rule 1: resolve target_fqdn from local dialalias row only (no live GK).
+ */
+static int prefixdial_digits_only(const char *s)
+{
+    size_t i;
+
+    if (s == NULL || s[0] == '\0')
+    {
+        return 0;
+    }
+    for (i = 0; s[i] != '\0'; i++)
+    {
+        if (!isdigit((unsigned char)s[i]))
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void prefixdial_deny(agi_session_t *s)
+{
+    if (!strncmp(g_cluster_cfg.playcongested, "YES", 3))
+    {
+        agi_exec(s, "Playtones", "congestion");
+        agi_exec(s, "Congestion", "");
+    }
+    else
+    {
+        agi_exec(s, "Playback", "were-sorry");
+        agi_exec(s, "Playback", "call-cannot-complete");
+        agi_exec(s, "Playback", "please-hang-up-and-try-again");
+    }
+}
+
+void PrefixDial(agi_session_t *s)
+{
+    DebugFunctionTrace(__FUNCTION__);
+
+    char prefix[MAX_PRESEL_LEN] = {'\0'};
+    char dnid[MAX_EXT_LEN] = {'\0'};
+    char remainder[MAX_EXT_LEN] = {'\0'};
+    char active[8] = {'\0'};
+    char target_fqdn[128] = {'\0'};
+    char phone_suid[32] = {'\0'};
+    char phone_pkey[MAX_EXT_LEN] = {'\0'};
+    char phone_desc[128] = {'\0'};
+    char dialString[MAX_DIALSTR_LEN] = {'\0'};
+    char clidnum[MAX_EXT_LEN + 64] = {'\0'};
+    char clidname[160] = {'\0'};
+    char setclid[200] = {'\0'};
+    const char *raw;
+
+    if (!pbx3_fleet_mode())
+    {
+        DebugFunctionMsg(__FUNCTION__, "not fleet mode — deny");
+        prefixdial_deny(s);
+        return;
+    }
+
+    if (PARM_KEY == NULL || PARM_KEY[0] == '\0')
+    {
+        prefixdial_deny(s);
+        return;
+    }
+    strlcpy(prefix, PARM_KEY, sizeof(prefix));
+    if (!prefixdial_digits_only(prefix))
+    {
+        prefixdial_deny(s);
+        return;
+    }
+
+    strlcpy(dnid, s->call->extension, sizeof(dnid));
+    strlcpy(remainder, StripPreselect(prefix, dnid), sizeof(remainder));
+    if (!prefixdial_digits_only(remainder))
+    {
+        DebugFunctionMsg(__FUNCTION__, "non-digit or empty remainder — deny");
+        prefixdial_deny(s);
+        return;
+    }
+
+    raw = sqlQueryBind2(
+        "SELECT active, target_fqdn FROM dialalias WHERE pkey=? AND cluster=?",
+        prefix,
+        s->call->myCluster);
+    if (raw == NULL || !strcmp(raw, "-1") || rescols[0][0] == '\0')
+    {
+        DebugFunctionMsg(__FUNCTION__, "dialalias row missing — deny");
+        prefixdial_deny(s);
+        return;
+    }
+    strlcpy(active, rescols[0], sizeof(active));
+    strlcpy(target_fqdn, rescols[1], sizeof(target_fqdn));
+    if (strcmp(active, "YES") || target_fqdn[0] == '\0')
+    {
+        DebugFunctionMsg(__FUNCTION__, "inactive or empty target_fqdn — deny");
+        prefixdial_deny(s);
+        return;
+    }
+
+    /* Resolve calling phone → shortuid + display fields (pkey then shortuid). */
+    raw = sqlQueryBind2(
+        "SELECT shortuid, pkey, description FROM ipphone WHERE cluster=? AND pkey=?",
+        s->call->myCluster,
+        s->call->callerid);
+    if (raw == NULL || rescols[0][0] == '\0')
+    {
+        raw = sqlQueryBind2(
+            "SELECT shortuid, pkey, description FROM ipphone WHERE cluster=? AND shortuid=?",
+            s->call->myCluster,
+            s->call->callerid);
+    }
+    if (raw != NULL && rescols[0][0] != '\0')
+    {
+        strlcpy(phone_suid, rescols[0], sizeof(phone_suid));
+        strlcpy(phone_pkey, rescols[1], sizeof(phone_pkey));
+        strlcpy(phone_desc, rescols[2], sizeof(phone_desc));
+    }
+
+    if (phone_suid[0] != '\0' && g_cluster_cfg.fqdn[0] != '\0')
+    {
+        snprintf(clidnum, sizeof(clidnum), "%s@%s", phone_suid, g_cluster_cfg.fqdn);
+        snprintf(setclid, sizeof(setclid), "CALLERID(number)=%s", clidnum);
+        agi_exec(s, "Set", setclid);
+    }
+    if (phone_pkey[0] != '\0' || phone_desc[0] != '\0')
+    {
+        if (phone_desc[0] != '\0' && phone_pkey[0] != '\0')
+        {
+            snprintf(clidname, sizeof(clidname), "%s %s", phone_pkey, phone_desc);
+        }
+        else if (phone_desc[0] != '\0')
+        {
+            strlcpy(clidname, phone_desc, sizeof(clidname));
+        }
+        else
+        {
+            strlcpy(clidname, phone_pkey, sizeof(clidname));
+        }
+        snprintf(setclid, sizeof(setclid), "CALLERID(name)=%s", clidname);
+        agi_exec(s, "Set", setclid);
+    }
+
+    /* Via Egress endpoint; R-URI = ext@target tenant FQDN for SBC miss→dispatcher. */
+    snprintf(dialString, sizeof(dialString), "%s/Egress/sip:%s@%s", SIPDRIVER, remainder, target_fqdn);
+    strlcat(dialString, ASTDLIM, sizeof(dialString));
+    strlcat(dialString, ASTDLIM, sizeof(dialString));
+    if (!strcmp(g_cluster_cfg.allowhashxfer, "enabled") && s->call->caller_is_local)
+    {
+        strlcat(dialString, "T", sizeof(dialString));
+    }
+
+    agi_exec(s, "Dial", dialString);
+    agi_get_variable(s, "DIALSTATUS");
+    if (!strcmp(s->res->data, "ANSWER"))
+    {
+        return;
+    }
+    if (!strcmp(s->res->data, "BUSY"))
+    {
+        if (!strncmp(g_cluster_cfg.playbusy, "YES", 3))
+        {
+            agi_exec(s, "Playtones", "busy");
+            agi_exec(s, "Busy", "");
+        }
+        else
+        {
+            agi_exec(s, "Playback", "numb-dialled-busy");
+            agi_exec(s, "Playback", "silence/1");
+            agi_exec(s, "Playback", "please-try-again-later");
+        }
+        return;
+    }
+    prefixdial_deny(s);
 }
 
 void OutVoip(agi_session_t *s, char *key)

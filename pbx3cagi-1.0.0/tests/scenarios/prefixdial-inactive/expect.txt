@@ -1,0 +1,4 @@
+must EXEC Playtones congestion
+must EXEC Congestion
+must-not EXEC Dial
+exit 0

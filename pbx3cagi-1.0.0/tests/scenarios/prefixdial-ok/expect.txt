@@ -1,0 +1,5 @@
+must EXEC Set CALLERID(number)=testex01@testtn01.pbx3.local
+must EXEC Set CALLERID(name)=1101 Extension 1101
+must EXEC Dial PJSIP/Egress/sip:1001@sister.pbx3.local,,T
+must-not EXEC Playtones congestion
+exit 0

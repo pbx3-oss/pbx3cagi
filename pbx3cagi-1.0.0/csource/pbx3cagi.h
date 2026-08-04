@@ -148,6 +148,8 @@ void RecGreet(agi_session_t *s);
 void OutRoute(agi_session_t *s);
 void OutTrunk(agi_session_t *s, char *key);
 void OutVoip(agi_session_t *s, char *key);
+/** Tenant short dial: prefix → target_fqdn via Egress/SBC (fleet). */
+void PrefixDial(agi_session_t *s);
 int Authenticate(agi_session_t *s, char* password);
 int GetRecOption(agi_session_t *s);
 void LepDial(agi_session_t *s);
