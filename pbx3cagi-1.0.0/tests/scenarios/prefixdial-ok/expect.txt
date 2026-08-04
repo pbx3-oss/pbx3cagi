@@ -1,5 +1,7 @@
-must EXEC Set CALLERID(number)=testex01@testtn01.pbx3.local
+must EXEC Set CALLERID(number)=1101
 must EXEC Set CALLERID(name)=1101 Extension 1101
-must EXEC Dial PJSIP/Egress/sip:1001@sister.pbx3.local,,T
+must SET VARIABLE __PBX3_RETURN_AOR "testex01@testtn01.pbx3.local"
+must SET VARIABLE __PBX3_SITE_DIAL "YES"
+must EXEC Dial PJSIP/SbcSiteOuttesttn01/sip:1001@sister.pbx3.local,,b(pbx3-site-pai^s^1)T
 must-not EXEC Playtones congestion
 exit 0

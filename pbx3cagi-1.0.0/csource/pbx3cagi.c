@@ -1203,7 +1203,6 @@ void PrefixDial(agi_session_t *s)
     char phone_pkey[MAX_EXT_LEN] = {'\0'};
     char phone_desc[128] = {'\0'};
     char dialString[MAX_DIALSTR_LEN] = {'\0'};
-    char clidnum[MAX_EXT_LEN + 64] = {'\0'};
     char clidname[160] = {'\0'};
     char setclid[200] = {'\0'};
     const char *raw;
@@ -1274,10 +1273,21 @@ void PrefixDial(agi_session_t *s)
         strlcpy(phone_desc, rescols[2], sizeof(phone_desc));
     }
 
-    if (phone_suid[0] != '\0' && g_cluster_cfg.fqdn[0] != '\0')
+    if (phone_pkey[0] != '\0')
     {
-        snprintf(clidnum, sizeof(clidnum), "%s@%s", phone_suid, g_cluster_cfg.fqdn);
-        snprintf(setclid, sizeof(setclid), "CALLERID(number)=%s", clidnum);
+        /*
+         * Presentation number = local extension (pkey). Shortuid in num looks like a
+         * broken phone number (ends in a letter); suid@fqdn becomes a "URL" / %40 user
+         * on the handset. Return-dial via suid@fqdn remains §3.9 / slice D when we
+         * push it through PAI-only (network identity) without stuffing it into num.
+         * From domain still comes from SbcSiteOut{cluster} for the first SIP hop.
+         */
+        snprintf(setclid, sizeof(setclid), "CALLERID(number)=%s", phone_pkey);
+        agi_exec(s, "Set", setclid);
+    }
+    else if (phone_suid[0] != '\0')
+    {
+        snprintf(setclid, sizeof(setclid), "CALLERID(number)=%s", phone_suid);
         agi_exec(s, "Set", setclid);
     }
     if (phone_pkey[0] != '\0' || phone_desc[0] != '\0')
@@ -1298,15 +1308,42 @@ void PrefixDial(agi_session_t *s)
         agi_exec(s, "Set", setclid);
     }
 
-    /* Via Egress endpoint; R-URI = ext@target tenant FQDN for SBC miss→dispatcher. */
-    snprintf(dialString, sizeof(dialString), "%s/Egress/sip:%s@%s", SIPDRIVER, remainder, target_fqdn);
-    strlcat(dialString, ASTDLIM, sizeof(dialString));
-    strlcat(dialString, ASTDLIM, sizeof(dialString));
-    if (!strcmp(g_cluster_cfg.allowhashxfer, "enabled") && s->call->caller_is_local)
+    /*
+     * Network return AoR (§3.9) on the *outbound* PJSIP channel via Dial b()
+     * (setting PJSIP_HEADER on Local never sticks). Magrathea keeps this PAI
+     * and rewrites From → sitedial for home identify. Presentation num stays pkey.
+     */
+    if (phone_suid[0] != '\0' && g_cluster_cfg.fqdn[0] != '\0')
     {
-        strlcat(dialString, "T", sizeof(dialString));
+        char aor[160] = {'\0'};
+
+        snprintf(aor, sizeof(aor), "%s@%s", phone_suid, g_cluster_cfg.fqdn);
+        agi_set_variable(s, "__PBX3_RETURN_AOR", aor);
     }
 
+    /*
+     * Via SbcSiteOut{calling-tenant} so From domain is caller tenant FQDN.
+     * R-URI = ext@target tenant FQDN for SBC miss→dispatcher.
+     */
+    {
+        char endpoint[80] = {'\0'};
+        char opts[64] = {'\0'};
+
+        snprintf(endpoint, sizeof(endpoint), "SbcSiteOut%s", s->call->myCluster);
+        snprintf(dialString, sizeof(dialString), "%s/%s/sip:%s@%s",
+                 SIPDRIVER, endpoint, remainder, target_fqdn);
+        /* b() runs on the outbound PJSIP leg before INVITE */
+        strlcpy(opts, "b(pbx3-site-pai^s^1)", sizeof(opts));
+        if (!strcmp(g_cluster_cfg.allowhashxfer, "enabled") && s->call->caller_is_local)
+        {
+            strlcat(opts, "T", sizeof(opts));
+        }
+        strlcat(dialString, ASTDLIM, sizeof(dialString));
+        strlcat(dialString, ASTDLIM, sizeof(dialString));
+        strlcat(dialString, opts, sizeof(dialString));
+    }
+
+    agi_set_variable(s, "__PBX3_SITE_DIAL", "YES");
     agi_exec(s, "Dial", dialString);
     agi_get_variable(s, "DIALSTATUS");
     if (!strcmp(s->res->data, "ANSWER"))
@@ -1735,16 +1772,46 @@ void PrepDial(agi_session_t *s, char *number, char *type, char *twin, char *vmbo
  *  Dial(PJSIP/shortuid) alone → "No route to destination" → VM. Always use
  *  sip:shortuid@tenant.fqdn in fleet mode so invite hits SBC lookup (same as desks).
  *  Direct instance :8089 WSS (no SBC REGISTER) remains singleton Dial without FQDN.
+ *
+ *  Site-dial receive (§3.9 / D): when __PBX3_RETURN_AOR is set, dial via
+ *  endpoint SiteRing (send_pai=no) so dialplan PAI (return AoR) is not
+ *  overwritten by CALLERID presentation (extension digits).
  */
-    strlcpy(dialString, SIPDRIVER, sizeof(dialString));
-    strlcat(dialString, "/", sizeof(dialString));
-    strlcat(dialString, number, sizeof(dialString));
-    if (pbx3_fleet_mode() && g_cluster_cfg.fqdn[0] != '\0')
     {
-        strlcat(dialString, "/sip:", sizeof(dialString));
-        strlcat(dialString, number, sizeof(dialString));
-        strlcat(dialString, "@", sizeof(dialString));
-        strlcat(dialString, g_cluster_cfg.fqdn, sizeof(dialString));
+        char ring_ep[80] = {'\0'};
+        int site_return = 0;
+
+        agi_get_variable(s, "PBX3_RETURN_AOR");
+        if (pbx3_fleet_mode() && s->res->data[0] != '\0' &&
+            strcmp(s->res->data, "(null)") != 0)
+        {
+            site_return = 1;
+            strlcpy(ring_ep, "SiteRing", sizeof(ring_ep));
+        }
+        else
+        {
+            strlcpy(ring_ep, number, sizeof(ring_ep));
+        }
+
+        strlcpy(dialString, SIPDRIVER, sizeof(dialString));
+        strlcat(dialString, "/", sizeof(dialString));
+        strlcat(dialString, ring_ep, sizeof(dialString));
+        if (pbx3_fleet_mode() && g_cluster_cfg.fqdn[0] != '\0')
+        {
+            strlcat(dialString, "/sip:", sizeof(dialString));
+            strlcat(dialString, number, sizeof(dialString));
+            strlcat(dialString, "@", sizeof(dialString));
+            strlcat(dialString, g_cluster_cfg.fqdn, sizeof(dialString));
+        }
+        /* stash flag for option append below */
+        if (site_return)
+        {
+            agi_set_variable(s, "PBX3_SITE_RING", "YES");
+        }
+        else
+        {
+            agi_set_variable(s, "PBX3_SITE_RING", "");
+        }
     }
 
 /**
@@ -1820,6 +1887,19 @@ void PrepDial(agi_session_t *s, char *number, char *type, char *twin, char *vmbo
     if (!strcmp(s->res->data, "YES"))
     {
         strlcat(dialString, "m", sizeof(dialString));
+    }
+/**
+ *  Tenant short dial (§3.9 / slice D): attach return AoR as PAI on phone INVITE.
+ */
+    agi_get_variable(s, "PBX3_SITE_RING");
+    if (!strcmp(s->res->data, "YES") && strstr(dialString, "pbx3-site-pai") == NULL)
+    {
+        if (strcmp(type, "queue") == 0 && strstr(dialString, ",,") == NULL)
+        {
+            strlcat(dialString, ASTDLIM, sizeof(dialString));
+            strlcat(dialString, ASTDLIM, sizeof(dialString));
+        }
+        strlcat(dialString, "b(pbx3-site-pai^s^1)", sizeof(dialString));
     }
 /**
  *  Phase E (queue) + Phase G (LepDial): decide only — set PBX3_DIAL for
