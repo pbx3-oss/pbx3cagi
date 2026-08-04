@@ -1,3 +1,11 @@
+pbx3cagi (1.0.0-11) stable; urgency=medium
+
+  * PrefixDial: tenant short dial (prefix + ext → ext@target_fqdn via
+    SbcSiteOut / SBC). Presentation CLIP = extension; return AoR via
+    SiteRing + pbx3-site-pai PAI (slice C/D partial).
+
+ -- KoKo <admin@aelintra.com>  Tue, 04 Aug 2026 19:00:00 +0000
+
 pbx3cagi (1.0.0-10) stable; urgency=medium
 
   * PrepDial: fleet mode always Dial(PJSIP/shortuid/sip:shortuid@tenant.fqdn)
