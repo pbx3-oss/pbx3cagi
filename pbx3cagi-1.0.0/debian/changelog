@@ -1,3 +1,10 @@
+pbx3cagi (1.0.0-13) stable; urgency=medium
+
+  * Slice D: AstDB OCSTAT accepts day-part modes (not only CLOSED);
+    master + tenant force above holiday (Q5); L0 force lunch/tenant/AUTO.
+
+ -- KoKo <admin@aelintra.com>  Tue, 04 Aug 2026 21:00:00 +0000
+
 pbx3cagi (1.0.0-12) stable; urgency=medium
 
   * CheckState dual-read: route_profile + open/close columns; sched_mode;

@@ -73,7 +73,10 @@ Scenarios use **`astdb.json`** per scenario (`family/key` → value). See `fixtu
 | `sched-closed-oclo` | Ingress + `seed_patch.sql` | closed → closeroute |
 | `sched-open-profile` | Ingress | profile open → dest |
 | `sched-mode-lunch-profile` | Ingress + patch | `sched_mode=lunch` → profile line |
-| `force-master-closed-over-holiday` | Ingress | Q5 master force beats holiday dest |
+| `force-master-closed-over-holiday` | Ingress | Q5 master `CLOSED` beats holiday dest |
+| `force-master-lunch-over-holiday` | Ingress | Q5 master mode token `lunch` beats holiday |
+| `force-tenant-closed-over-holiday` | Ingress | Tenant `OCSTAT=CLOSED` over holiday |
+| `force-auto-resumes-sched` | Ingress | `AUTO` → follows `sched_mode` |
 | `holiday-force-dest` | Ingress | Holiday dest when AUTO |
 
 Optional per-scenario: **`variables.json`** (GET VARIABLE replies), **`env.json`** (process env), **`seed_patch.sql`**.

@@ -1,0 +1,4 @@
+must SET EXTENSION 1102
+must-not SET EXTENSION 7777
+must-not SET EXTENSION 1101
+exit 0

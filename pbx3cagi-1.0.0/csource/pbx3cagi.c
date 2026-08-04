@@ -2551,6 +2551,40 @@ static void ResolveInboundDest(
     }
 }
 
+/**
+ * Map AstDB OCSTAT to a forced schedule mode (day-parts).
+ * AUTO / empty / OPEN → no force (caller follows holiday/timer).
+ * CLOSED or any mode token (lunch, night, …) → force that mode (Q5).
+ */
+static void ocstat_to_force_mode(const char *raw, char *out, size_t outlen)
+{
+    size_t i;
+
+    if (outlen == 0)
+    {
+        return;
+    }
+    out[0] = '\0';
+    if (raw == NULL || raw[0] == '\0')
+    {
+        return;
+    }
+    if (!strcasecmp(raw, "AUTO") || !strcasecmp(raw, "OPEN"))
+    {
+        return;
+    }
+    for (i = 0; raw[i] != '\0' && i + 1 < outlen; i++)
+    {
+        char c = raw[i];
+        if (c >= 'A' && c <= 'Z')
+        {
+            c = (char)(c - 'A' + 'a');
+        }
+        out[i] = c;
+    }
+    out[i] = '\0';
+}
+
 void CheckState(agi_session_t *s, char *remotenum)
 {
 
@@ -2563,6 +2597,7 @@ void CheckState(agi_session_t *s, char *remotenum)
     char dest[64] = {'\0'};
     char mode[32] = {'\0'};
     char holiday_dest[64] = {'\0'};
+    char force_mode[32] = {'\0'};
 
     sqlQueryBind1(
         "SELECT cluster,openroute,closeroute,route_profile,entry_dest FROM inroutes WHERE pkey=?",
@@ -2583,13 +2618,26 @@ void CheckState(agi_session_t *s, char *remotenum)
         strlcpy(holiday_dest, g_cluster_cfg.routeoverride, sizeof(holiday_dest));
     }
 
-/**
- * Master / operator hard force (Q5): wins over holiday.
- */
+    /*
+     * Operator hard-force (Q5): master then tenant AstDB OCSTAT.
+     * Values: AUTO/OPEN = no force; CLOSED or day-part mode = force that mode.
+     * Wins over holiday dest.
+     */
     strlcpy(state, DBGet(s, "STAT", "OCSTAT"), sizeof(state));
-    if (!strcasecmp(state, "CLOSED"))
+    ocstat_to_force_mode(state, force_mode, sizeof(force_mode));
+    if (force_mode[0] == '\0')
     {
-        ResolveInboundDest(s, "closed", route_profile, openroute, closeroute, dest, sizeof(dest));
+        strlcpy(state, DBGet(s, cluster, "OCSTAT"), sizeof(state));
+        ocstat_to_force_mode(state, force_mode, sizeof(force_mode));
+    }
+    if (force_mode[0] == '\0' && s->call->myCluster[0] != '\0')
+    {
+        strlcpy(state, DBGet(s, s->call->myCluster, "OCSTAT"), sizeof(state));
+        ocstat_to_force_mode(state, force_mode, sizeof(force_mode));
+    }
+    if (force_mode[0] != '\0')
+    {
+        ResolveInboundDest(s, force_mode, route_profile, openroute, closeroute, dest, sizeof(dest));
         agi_set_priority(s, 1);
         agi_set_extension(s, dest);
         agi_set_context(s, s->call->myClusterContext);
@@ -2626,23 +2674,24 @@ char *CheckTime(agi_session_t *s, char *cluster)
 
     DebugFunctionTrace(__FUNCTION__);
 
-    char clusterdboclo[32] = {'\0'};
     static char mode_ret[32];
+    char force_mode[32] = {'\0'};
+    char raw[32] = {'\0'};
 
     /*
-     * Holiday dest handled in CheckState (above schedule). Force mode path later.
-     * Tenant AstDB force CLOSED.
+     * Tenant force is applied in CheckState (above holiday). Here: sched_mode / oclo only.
+     * Defensive: if a caller uses CheckTime alone, still honour OCSTAT force.
      */
-    strlcpy(clusterdboclo, DBGet(s, cluster, "OCSTAT"), sizeof(clusterdboclo));
-    if (!strcasecmp(clusterdboclo, "CLOSED"))
+    strlcpy(raw, DBGet(s, cluster, "OCSTAT"), sizeof(raw));
+    ocstat_to_force_mode(raw, force_mode, sizeof(force_mode));
+    if (force_mode[0] == '\0' && s->call->myCluster[0] != '\0')
     {
-        strlcpy(mode_ret, "closed", sizeof(mode_ret));
-        return mode_ret;
+        strlcpy(raw, DBGet(s, s->call->myCluster, "OCSTAT"), sizeof(raw));
+        ocstat_to_force_mode(raw, force_mode, sizeof(force_mode));
     }
-
-    if (!strcasecmp(DBGet(s, s->call->myCluster, "OCSTAT"), "CLOSED"))
+    if (force_mode[0] != '\0')
     {
-        strlcpy(mode_ret, "closed", sizeof(mode_ret));
+        strlcpy(mode_ret, force_mode, sizeof(mode_ret));
         return mode_ret;
     }
 
