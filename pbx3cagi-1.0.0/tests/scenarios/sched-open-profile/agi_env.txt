@@ -1,0 +1,11 @@
+agi_network: no
+agi_channel: Local/test-00000001;1
+agi_context: testtn01
+agi_extension: 441924910444
+agi_callerid: 01924918076
+agi_calleridname: Lab Caller
+agi_uniqueid: test.sched-open-profile
+agi_dnid: 441924910444
+agi_rdnis: unknown
+agi_type: Local
+agi_language: en

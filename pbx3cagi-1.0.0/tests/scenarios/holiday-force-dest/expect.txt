@@ -1,0 +1,2 @@
+must SET EXTENSION 7777
+exit 0

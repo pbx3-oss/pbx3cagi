@@ -82,6 +82,8 @@ typedef struct cluster_cfg {
     char masteroclo[16];
     char oclo[16];
     char routeoverride[32];
+    char sched_mode[32];           /* day-parts timer mode (dual-read with oclo) */
+    char holiday_force_dest[32];   /* optional redesign field; may mirror routeoverride */
     char fqdn[128]; /* tenant SIP domain (cluster.fqdn / cname) for RURI */
 } cluster_cfg_t;
 

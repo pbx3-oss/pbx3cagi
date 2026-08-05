@@ -36,4 +36,14 @@ fi
 
 rm -f "$DB"
 sqlite3 "$DB" < "$SEED"
+
+# Optional per-scenario patch (run-scenario exports SCENARIO_NAME)
+if [[ -n "${SCENARIO_NAME:-}" ]]; then
+  patch="$ROOT/tests/scenarios/${SCENARIO_NAME}/seed_patch.sql"
+  if [[ -f "$patch" ]]; then
+    sqlite3 "$DB" < "$patch"
+    echo "applied seed_patch for ${SCENARIO_NAME}"
+  fi
+fi
+
 echo "built synthetic tenant fixture from minimal-tenant-seed.sql"
