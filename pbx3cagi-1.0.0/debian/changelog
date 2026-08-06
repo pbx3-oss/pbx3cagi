@@ -1,3 +1,10 @@
+pbx3cagi (1.0.0-14) stable; urgency=medium
+
+  * PrefixDial: Site Group CLIP = routing_prefix+ext (desk digit callback);
+    presentation no longer bare extension when destination has a prefix.
+
+ -- KoKo <admin@aelintra.com>  Thu, 06 Aug 2026 23:15:00 +0000
+
 pbx3cagi (1.0.0-13) stable; urgency=medium
 
   * Slice D: AstDB OCSTAT accepts day-part modes (not only CLOSED);
