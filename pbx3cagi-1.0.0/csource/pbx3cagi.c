@@ -1276,13 +1276,36 @@ void PrefixDial(agi_session_t *s)
     if (phone_pkey[0] != '\0')
     {
         /*
-         * Presentation number = local extension (pkey). Shortuid in num looks like a
-         * broken phone number (ends in a letter); suid@fqdn becomes a "URL" / %40 user
-         * on the handset. Return-dial via suid@fqdn remains §3.9 / slice D when we
-         * push it through PAI-only (network identity) without stuffing it into num.
-         * From domain still comes from SbcSiteOut{cluster} for the first SIP hop.
+         * Site Group CLIP try-out: presentation = {caller routing_prefix}{ext}
+         * so peer redial is PrefixDial digits (destination-owned prefix mesh).
+         * Resolve own prefix from a co-located managed dialalias that targets us
+         * (same SQLite as peers on this home). Fallback: bare extension (pre-cohort).
+         * PAI / return AoR stays suid@fqdn (§3.9 Path 1).
          */
-        snprintf(setclid, sizeof(setclid), "CALLERID(number)=%s", phone_pkey);
+        char own_prefix[16] = {'\0'};
+        char clip_num[48] = {'\0'};
+
+        if (g_cluster_cfg.fqdn[0] != '\0')
+        {
+            raw = sqlQueryBind1(
+                "SELECT pkey FROM dialalias WHERE source='cohort' AND target_fqdn=? "
+                "AND pkey IS NOT NULL AND trim(pkey) != '' LIMIT 1",
+                g_cluster_cfg.fqdn);
+            if (raw != NULL && rescols[0][0] != '\0' && prefixdial_digits_only(rescols[0]))
+            {
+                strlcpy(own_prefix, rescols[0], sizeof(own_prefix));
+            }
+        }
+
+        if (own_prefix[0] != '\0')
+        {
+            snprintf(clip_num, sizeof(clip_num), "%s%s", own_prefix, phone_pkey);
+            snprintf(setclid, sizeof(setclid), "CALLERID(number)=%s", clip_num);
+        }
+        else
+        {
+            snprintf(setclid, sizeof(setclid), "CALLERID(number)=%s", phone_pkey);
+        }
         agi_exec(s, "Set", setclid);
     }
     else if (phone_suid[0] != '\0')
@@ -1311,7 +1334,8 @@ void PrefixDial(agi_session_t *s)
     /*
      * Network return AoR (§3.9) on the *outbound* PJSIP channel via Dial b()
      * (setting PJSIP_HEADER on Local never sticks). Magrathea keeps this PAI
-     * and rewrites From → sitedial for home identify. Presentation num stays pkey.
+     * and rewrites From → sitedial for home identify. Presentation num is
+     * routing_prefix+ext when Site Group mesh is present (else bare pkey).
      */
     if (phone_suid[0] != '\0' && g_cluster_cfg.fqdn[0] != '\0')
     {
