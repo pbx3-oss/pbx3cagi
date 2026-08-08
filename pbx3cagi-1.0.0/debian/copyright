@@ -1,24 +1,71 @@
-This package was debianized from the pbx3cagi source.
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: pbx3cagi
+Source: https://github.com/aelintra/pbx3cagi
+Upstream-Contact: Aelintra Telecom Limited
 
-Copyright: GPL-3
+Files: *
+Copyright: Aelintra Telecom Limited
+License: Apache-2.0
 
-License: GPL-3
- This package is free software; you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation; either version 3 of the License, or
- (at your option) any later version.
+Files: csource/cagi.c
+       csource/cagi.h
+       csource/cagi_source/cagi/cagi.c
+       csource/cagi_source/cagi/fastcagi.c
+Copyright: 2005-2006 David Cornewell <david.cornewell@gmail.com>
+Comment: CAGI library (PHPAGI port to C). Upstream license is LGPL; not relicensed.
+License: LGPL-2.1-or-later
+
+Files: csource/sqlite3.c
+       csource/sqlite3.h
+Copyright: 2001-2024 The SQLite authors
+Comment: Embedded SQLite amalgamation. See https://www.sqlite.org/copyright.html
+License: blessing
+
+License: Apache-2.0
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
  .
- This package is distributed in the hope that it will be useful,
+     http://www.apache.org/licenses/LICENSE-2.0
+ .
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ .
+ On Debian systems, the complete text of the Apache License, Version 2.0
+ can be found in "/usr/share/common-licenses/Apache-2.0".
+
+License: LGPL-2.1-or-later
+ This library is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+ .
+ This library is distributed in the hope that it will be useful,
  but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
  .
- You should have received a copy of the GNU General Public License
- along with this program; if not, see <https://www.gnu.org/licenses/>.
+ You should have received a copy of the GNU Lesser General Public License
+ along with this library.  If not, see <https://www.gnu.org/licenses/>.
+ .
+ On Debian systems, the complete text of the GNU Lesser General Public
+ License version 2.1 can be found in "/usr/share/common-licenses/LGPL-2.1".
 
-Upstream: PBX3 AGI (Asterisk Gateway Interface) switching engine
-Packager: KoKo <admin@aelintra.com>
-Vendor: Aelintra Telecom Limited
-Summary: PBX3 distributed PBX
-Description: PBX3 admin and backend code to configure and build Asterisk
- dialplans on the fly.
+License: blessing
+ The author or authors of this code dedicate any and all copyright
+ interest in this code to the public domain. We make this dedication
+ for the benefit of the public at large and to the detriment of our
+ heirs and successors. We intend this dedication to be an overt act of
+ relinquishment in perpetuity of all present and future rights to this
+ code under copyright law.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ OTHER DEALINGS IN THE SOFTWARE.

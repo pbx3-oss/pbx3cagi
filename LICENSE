@@ -535,11 +535,3 @@ Thanks to the following people for their input:
 
 */
 
-
-----------------------------------------------------------------------
-Third-party components (see debian/copyright for file lists):
-
-- CAGI library (csource/cagi.c, csource/cagi.h, csource/cagi_source/...):
-  Copyright David Cornewell — GNU Lesser General Public License (LGPL).
-- SQLite amalgamation (csource/sqlite3.c, csource/sqlite3.h):
-  SQLite blessing / public domain — https://www.sqlite.org/copyright.html
