@@ -42,8 +42,8 @@ static void cluster_cfg_apply_defaults(cluster_cfg_t *cfg)
     strlcpy(cfg->cfwd_answer, "enabled", sizeof(cfg->cfwd_answer));
     strlcpy(cfg->ivr_key_wait, "6", sizeof(cfg->ivr_key_wait));
     strlcpy(cfg->ivr_digit_wait_str, "6000", sizeof(cfg->ivr_digit_wait_str));
-    strlcpy(cfg->syspass, "4444", sizeof(cfg->syspass));
-    strlcpy(cfg->spy_pass, "3333", sizeof(cfg->spy_pass));
+    strlcpy(cfg->syspass, "", sizeof(cfg->syspass));
+    strlcpy(cfg->spy_pass, "", sizeof(cfg->spy_pass));
     strlcpy(cfg->chanmax_str, "3", sizeof(cfg->chanmax_str));
     strlcpy(cfg->usemohcustom, "NO", sizeof(cfg->usemohcustom));
     strlcpy(cfg->masteroclo, "AUTO", sizeof(cfg->masteroclo));
@@ -264,11 +264,11 @@ int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg)
     }
     {
         const unsigned char *t = sqlite3_column_text(stmt, 18);
-        strlcpy(cfg->syspass, t ? (const char *)t : "4444", sizeof(cfg->syspass));
+        strlcpy(cfg->syspass, t ? (const char *)t : "", sizeof(cfg->syspass));
     }
     {
         const unsigned char *t = sqlite3_column_text(stmt, 19);
-        strlcpy(cfg->spy_pass, t ? (const char *)t : "3333", sizeof(cfg->spy_pass));
+        strlcpy(cfg->spy_pass, t ? (const char *)t : "", sizeof(cfg->spy_pass));
     }
     {
         const unsigned char *t = sqlite3_column_text(stmt, 20);

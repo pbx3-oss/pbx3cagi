@@ -19,14 +19,17 @@ endif
 
 all: pbx3cagi
 
-pbx3cagi:  pbx3cagi.o agi_sqlite.o agi_wrap.o cagi.o sqlite3.o
-	$(CC) pbx3cagi.o agi_sqlite.o agi_wrap.o cagi.o sqlite3.o -o pbx3cagi -pthread -ldl $(LDFLAGS_BSD)
+pbx3cagi:  pbx3cagi.o agi_sqlite.o agi_helpers.o agi_wrap.o cagi.o sqlite3.o
+	$(CC) pbx3cagi.o agi_sqlite.o agi_helpers.o agi_wrap.o cagi.o sqlite3.o -o pbx3cagi -pthread -ldl $(LDFLAGS_BSD)
 
 pbx3cagi.o: pbx3cagi.c
 	$(CC) $(CFLAGS) pbx3cagi.c $(DFLAGS) 
 
 agi_sqlite.o: agi_sqlite.c
 	$(CC) $(CFLAGS) agi_sqlite.c $(DFLAGS)
+
+agi_helpers.o: agi_helpers.c
+	$(CC) $(CFLAGS) agi_helpers.c $(DFLAGS)
 
 agi_wrap.o: agi_wrap.c
 	$(CC) $(CFLAGS) agi_wrap.c $(DFLAGS)
@@ -37,18 +40,31 @@ cagi.o: cagi.c
 sqlite3.o: sqlite3.c
 	$(CC) $(CFLAGS) sqlite3.c -Os
 
-pbx3cagi.c: pbx3cagi.h agi_sqlite.h agi_wrap.h
+pbx3cagi.c: pbx3cagi.h agi_sqlite.h agi_wrap.h agi_helpers.h
 
 agi_sqlite.c: agi_sqlite.h pbx3cagi.h
+
+agi_helpers.c: agi_helpers.h
 
 agi_wrap.c: agi_wrap.h pbx3cagi.h cagi.h
 
 cagi.c: cagi.h
 
-clean:
-	rm -rf *o pbx3cagi
+test_agi_helpers: test_agi_helpers.o agi_helpers.o
+	$(CC) test_agi_helpers.o agi_helpers.o -o test_agi_helpers $(LDFLAGS_BSD)
 
-test:
+test_agi_helpers.o: test_agi_helpers.c agi_helpers.h
+	$(CC) $(CFLAGS) test_agi_helpers.c $(DFLAGS)
+
+clean:
+	rm -rf *o pbx3cagi test_agi_helpers
+
+test: test-unit test-scenarios
+
+test-unit: test_agi_helpers
+	./test_agi_helpers
+
+test-scenarios:
 	$(MAKE) all
 	../tests/run-all-scenarios.sh
 

@@ -1,0 +1,3 @@
+must EXEC Authenticate
+must EXEC ChanSpy
+exit 0

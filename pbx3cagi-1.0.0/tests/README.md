@@ -78,8 +78,12 @@ Scenarios use **`astdb.json`** per scenario (`family/key` → value). See `fixtu
 | `force-tenant-closed-over-holiday` | Ingress | Tenant `OCSTAT=CLOSED` over holiday |
 | `force-auto-resumes-sched` | Ingress | `AUTO` → follows `sched_mode` |
 | `holiday-force-dest` | Ingress | Holiday dest when AUTO |
+| `spy-default-denied` | `*68*1101` + patch `spy_pass=3333` | No Authenticate / ChanSpy (fail-closed) |
+| `spy-ok` | `*68*1101` + patch `spy_pass=9911` | Authenticate then ChanSpy |
 
 Optional per-scenario: **`variables.json`** (GET VARIABLE replies), **`env.json`** (process env), **`seed_patch.sql`**.
+
+**Unit helpers:** from `csource/`, `make test-unit` (GetExt / Mangle / insecure feature-pass).
 
 ## Layout
 

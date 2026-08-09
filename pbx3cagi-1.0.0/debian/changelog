@@ -1,3 +1,11 @@
+pbx3cagi (1.0.0-15) stable; urgency=medium
+
+  * Safety: GetExt/Mangle caller buffers (no stack returns); outboundClip/CFCheck/vmbox sized copies.
+  * Fail-closed on empty or stock sys/spy pass (4444/3333); empty schema defaults for spy_pass/syspass.
+  * Unit tests (agi_helpers) + AGI scenarios spy-default-denied / spy-ok.
+
+ -- Aelintra Telecom Limited <support@aelintra.com>  Sun, 09 Aug 2026 16:30:00 -0400
+
 pbx3cagi (1.0.0-14) stable; urgency=medium
 
   * PrefixDial: Site Group CLIP = routing_prefix+ext (desk digit callback);

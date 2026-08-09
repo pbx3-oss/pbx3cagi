@@ -4,6 +4,7 @@
 # Binary executables (built from source)
 # pbx3cagi: build with `make` in csource/ on the target arch (e.g. Linux arm64); not stored in git.
 pbx3cagi-1.0.0/csource/pbx3cagi
+pbx3cagi-1.0.0/csource/test_agi_helpers
 sarkhpe
 
 # Debian package build output (regenerate on Linux builder)

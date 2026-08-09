@@ -6,6 +6,8 @@
 #ifndef _PBX3CAGI_H
 #define _PBX3CAGI_H
 
+#include <stddef.h>
+
 #define MAX_NUM_LEN 32
 #define MAX_TRANSFORM_LEN 65
 #define MAX_NUM_TRANSFORM 128
@@ -141,11 +143,14 @@ int AuthenticatePassword(agi_session_t *s, const char *password_plain);
 /** Fill call identity + tenant from AGI vars / dialplan argv; load cluster cfg. */
 void agi_init_call_context(agi_session_t *s, int argc, char **argv);
 
-char* GetExt(char* number);
+/** Write digits after the leading 4-char feature prefix (*NN*) into out. */
+void GetExt(char *out, size_t outsz, const char *number);
 void DebugFunctionTrace(const char* thisFunc);
 void DebugFunctionMsg(const char* thisFunc, const char* thisMsg);
 void setMoh(agi_session_t *s);
-char* Mangle(agi_session_t *s, char* preSel, char* transformList, char* data);
+/** Write mangled number into out (never returns a stack pointer). */
+void Mangle(agi_session_t *s, char *preSel, char *transformList, char *data,
+            char *out, size_t outsz);
 void RecGreet(agi_session_t *s);
 void OutRoute(agi_session_t *s);
 void OutTrunk(agi_session_t *s, char *key);

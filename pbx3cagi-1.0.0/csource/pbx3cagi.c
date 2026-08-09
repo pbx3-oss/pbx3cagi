@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include "pbx3cagi.h"
+#include "agi_helpers.h"
 #include "agi_wrap.h"
 #include "cagi.h"
 #include "bsd_compat.h"
@@ -38,7 +39,7 @@ char eparm[64] = {'\0'};                  // Used by the Directory function (*57
 char vmsg[255] = {'\0'};                  // console mesage buffer
 char clidline[MAX_EXT_LEN] = {'\0'};      // CLI from trunk DB entry
 char clidphone[MAX_EXT_LEN] = {'\0'};     // CLI from phone DB entry
-char clidstrng[MAX_EXT_LEN] = {'\0'};     // CLI build string for sprintf
+char clidstrng[128] = {'\0'};             // CALLERID(…) set string (sized for prefix + CLID)
 char routeclassoverride[8] = {'\0'}; // Holiday scheduler route class override
 char routeoverride[32] = {'\0'};     // Holiday scheduler route override
 char routeclassopen[8] = {'\0'};     // open routeclass
@@ -388,39 +389,27 @@ void setMoh(agi_session_t *s)
     return;
 }
 
-char *GetExt(char *number)
+void GetExt(char *out, size_t outsz, const char *number)
 {
 
     DebugFunctionTrace(__FUNCTION__);
 
-    snprintf(vmsg, sizeof(vmsg), "Trace Entered GetExt with %s", number);
+    snprintf(vmsg, sizeof(vmsg), "Trace Entered GetExt with %s", number ? number : "(null)");
     DebugFunctionMsg(__FUNCTION__, vmsg);
 
-    char ext[MAX_EXT_LEN] = {'\0'};
-    char *pExt = &ext[0];
-    char tmp[MAX_EXT_LEN] = {'\0'};
-    int i;
+    get_ext_digits(out, outsz, number);
 
-    strlcpy(tmp, number, sizeof(tmp));
-    for (i = 0; i < (int)(strlen(tmp) - 4); i++)
-    {
-        ext[i] = tmp[i + 4];
-    }
-    snprintf(vmsg, sizeof(vmsg), "Trace returned from GetExt with %s", ext);
+    snprintf(vmsg, sizeof(vmsg), "Trace returned from GetExt with %s", out ? out : "");
     DebugFunctionMsg(__FUNCTION__, vmsg);
-    return pExt;
 }
 
-char *Mangle(agi_session_t *s, char *preSel, char *transformList, char *data)
+void Mangle(agi_session_t *s, char *preSel, char *transformList, char *data,
+            char *out, size_t outsz)
 {
 
     DebugFunctionTrace(__FUNCTION__);
 
-    char *transform, *left, *right;
-    char transformArr[MAX_NUM_TRANSFORM][MAX_TRANSFORM_LEN];
     char operand[MAX_NUM_LEN] = {'\0'};
-    char *pOperand = &operand[0];
-    int i = 0, j = 0, k = 0, len = 0;
 
     if (!strcmp(data, "CLI"))
     {
@@ -430,56 +419,8 @@ char *Mangle(agi_session_t *s, char *preSel, char *transformList, char *data)
     {
         strlcpy(operand, s->call->extension, sizeof(operand));
     }
-    if (preSel)
-    {
-        strlcpy(operand, StripPreselect(preSel, operand), sizeof(operand));
-    }
 
-    // extract each transform from the list
-    transform = strtok(transformList, " ");
-    while (transform)
-    {
-        strlcpy(transformArr[i], transform, sizeof(transformArr[i]));
-        transform = strtok(NULL, " ");
-        i++;
-    }
-    for (j = 0; j < i; j++)
-    {
-        if (transformArr[j][0] == ':')
-        {
-            left = "";
-            right = strtok(transformArr[j], ":");
-        }
-        else
-        {
-            left = strtok(transformArr[j], ":");
-            right = strtok(NULL, "\0");
-        }
-        // check if the left value of the transform matches the left side of
-        // the operand
-        if (!strncmp(operand, left, strlen(left)))
-        {
-            // if the transform matches shift the operand to the left to
-            // remove transform and then cat to right transform
-            len = strlen(left);
-            for (k = 0; k < (int)strlen(operand); k++)
-            {
-                operand[k] = operand[k + len];
-            }
-            if (right)
-            {
-                /* Build in a sized buffer. Never strlcat(right, …, sizeof(right)):
-                 * right is a char* into transformArr, so sizeof(right) is only
-                 * the pointer width (8 on aarch64) — truncated UK DNID to +441924. */
-                char mangled[MAX_NUM_LEN];
-                strlcpy(mangled, right, sizeof(mangled));
-                strlcat(mangled, operand, sizeof(mangled));
-                strlcpy(operand, mangled, sizeof(operand));
-            }
-        }
-    }
-
-    return pOperand;
+    mangle_number(out, outsz, operand, preSel, transformList);
 }
 
 void RecGreet(agi_session_t *s)
@@ -497,7 +438,7 @@ void RecGreet(agi_session_t *s)
 
     snprintf(tmpGreetFile, sizeof(tmpGreetFile), "%s%s/ug%i", SOUNDIR, s->call->myCluster, r);
 
-    strlcpy(ext, GetExt(PARM_CMD), sizeof(ext));
+    GetExt(ext, sizeof(ext), PARM_CMD);
     snprintf(newGreetFile, sizeof(newGreetFile), "%s%s/usergreeting%s.wav", SOUNDIR, s->call->myCluster, ext);
 
     // check password
@@ -544,9 +485,10 @@ int AuthenticatePassword(agi_session_t *s, const char *password_plain)
     DebugFunctionTrace(__FUNCTION__);
     char authbuf[64] = {'\0'};
 
-    if (password_plain == NULL || password_plain[0] == '\0')
+    if (is_insecure_feature_pass(password_plain))
     {
-        snprintf(vmsg, sizeof(vmsg), "Unable to find password in the database.");
+        snprintf(vmsg, sizeof(vmsg),
+                 "Refuse Authenticate: missing or insecure default feature password.");
         DebugFunctionMsg(__FUNCTION__, vmsg);
         return -1;
     }
@@ -857,7 +799,7 @@ void ChanSpyWhisper(agi_session_t *s)
         return;
     }
  
-    strlcat(ext, GetExt(PARM_CMD), sizeof(ext));
+    GetExt(ext, sizeof(ext), PARM_CMD);
     strlcpy(options, SIPDRIVER, sizeof(options));
     strlcat(options, ext, sizeof(options));
     strlcat(options, ",qw", sizeof(options));
@@ -877,7 +819,7 @@ void ChanSpy(agi_session_t *s)
         return;
     }
 //    strlcpy(ext, myClusterId, sizeof(ext));
-    strlcat(ext, GetExt(PARM_CMD), sizeof(ext));
+    GetExt(ext, sizeof(ext), PARM_CMD);
     strlcpy(options, SIPDRIVER, sizeof(options));
     strlcat(options, "/", sizeof(options));
     strlcat(options, ext, sizeof(options));
@@ -1427,11 +1369,11 @@ void OutVoip(agi_session_t *s, char *key)
 
     if (strcmp(transform, ""))
     {
-        strlcpy(number, Mangle(s, preSel, transform, ""), sizeof(number));
+        Mangle(s, preSel, transform, "", number, sizeof(number));
     }
     else
     {
-        strcpy(number, s->call->extension);
+        strlcpy(number, s->call->extension, sizeof(number));
         if (strcmp(preSel, ""))
         {
             strlcpy(number, StripPreselect(preSel, number), sizeof(number));
@@ -1572,7 +1514,8 @@ void LepDial(agi_session_t *s)
         {
             //            agi_exec(s, "Playback","silence/1");
             strlcat(vmflags, "u", sizeof(vmflags));
-            agi_exec(s, "Voicemail", strcat(vmbox, vmflags));
+            strlcat(vmbox, vmflags, sizeof(vmbox));
+            agi_exec(s, "Voicemail", vmbox);
             return;
         }
     }
@@ -1706,7 +1649,8 @@ void PostDial(agi_session_t *s)
         else
         {
             strlcat(vmflags, "u", sizeof(vmflags));
-            agi_exec(s, "Voicemail", strcat(vmbox, vmflags));
+            strlcat(vmbox, vmflags, sizeof(vmbox));
+            agi_exec(s, "Voicemail", vmbox);
             return;
         }
     }
@@ -1759,7 +1703,8 @@ void PostDial(agi_session_t *s)
     else
     {
         strlcat(vmflags, "b", sizeof(vmflags));
-        agi_exec(s, "Voicemail", strcat(vmbox, vmflags));
+        strlcat(vmbox, vmflags, sizeof(vmbox));
+        agi_exec(s, "Voicemail", vmbox);
         return;
     }
 
@@ -2084,7 +2029,7 @@ char * CFCheck(agi_session_t *s, char *type, char *number)
     //    char cflist[MAX_CALL_FWD_CHAIN_LEN][MAX_FWD_NUM_LEN] = {{'\0'}};
     char cfnum[MAX_FWD_NUM_LEN] = {'\0'};
     //    int i, cnt=0;
-    char rdnis_string[32] = "CALLERID(rdnis)=";
+    char rdnis_string[128] = {'\0'};
     char vmflags[4] = {'\0'};
     char vmbox[MAX_EXT_LEN] = {'\0'};
     char speedKey[32] = {'\0'};
@@ -2116,7 +2061,7 @@ char * CFCheck(agi_session_t *s, char *type, char *number)
 /**
  *  then go to voicemail
  */
-            sprintf(vmbox,"%s@%s%s",s->call->agi_dnid,s->call->myCluster,vmflags);
+            snprintf(vmbox, sizeof(vmbox), "%s@%s%s", s->call->agi_dnid, s->call->myCluster, vmflags);
             agi_exec(s, "Voicemail",vmbox);
 			return NULL;
         }
@@ -2147,7 +2092,7 @@ char * CFCheck(agi_session_t *s, char *type, char *number)
  */
     if (strcmp(s->call->rdnis,"unknown"))
     {
-        strcat(rdnis_string, s->call->callerid);
+        snprintf(rdnis_string, sizeof(rdnis_string), "CALLERID(rdnis)=%s", s->call->callerid);
         agi_exec(s, "Set", rdnis_string);
     }
 /**
@@ -2180,7 +2125,7 @@ void CFToggle(agi_session_t *s)
     technology = strtok(s->call->channel,"/");
     sipId = strtok(NULL,"-");
 
-    strlcpy(toNum, GetExt(PARM_CMD), sizeof(toNum));
+    GetExt(toNum, sizeof(toNum), PARM_CMD);
 
     DBPut(s, PARM_KEY, sipId, toNum);
 
@@ -3120,54 +3065,58 @@ void outboundClip(agi_session_t *s, char *key)
     DebugFunctionTrace(__FUNCTION__);
 
 	char clidwork[MAX_EXT_LEN] = {'\0'};
+	const char *sqlclid;
 
 	// backstop CLID if all else fails - take the trunk's CLID (if it exists)
-	strcpy(clidline, sqlQueryBind1("SELECT callerid FROM trunks WHERE pkey=?", key));
+	sqlclid = sqlQueryBind1("SELECT callerid FROM trunks WHERE pkey=?", key);
+	strlcpy(clidline, sqlclid ? sqlclid : "", sizeof(clidline));
 	if (strcmp(clidline, "")) {
-		strcpy(clidwork, clidline);
-		sprintf (vmsg,"trunks CLID  %s found for outbound call, using key %s", clidwork, key);
+		strlcpy(clidwork, clidline, sizeof(clidwork));
+		snprintf(vmsg, sizeof(vmsg), "trunks CLID  %s found for outbound call, using key %s", clidwork, key);
 		agi_verbose(s, vmsg,1);
 	}
 	else {
-		sprintf (vmsg,"No trunks CLID found for outbound call, using key %s", key);
+		snprintf(vmsg, sizeof(vmsg), "No trunks CLID found for outbound call, using key %s", key);
 		agi_verbose(s, vmsg,1);
 	}
 
 
 	// If there is a cluster CLID then it trumps the line 
 	if (strcmp(s->call->myClusterclid, "")) {
-		sprintf (vmsg,"Cluster CLID %s found", s->call->myClusterclid);
+		snprintf(vmsg, sizeof(vmsg), "Cluster CLID %s found", s->call->myClusterclid);
 		agi_verbose(s, vmsg,1);
-		strcpy(clidwork, s->call->myClusterclid);
+		strlcpy(clidwork, s->call->myClusterclid, sizeof(clidwork));
 	}
 	else {
-		sprintf (vmsg,"no cluster CLID found for outbound call, using key %s", key);
+		snprintf(vmsg, sizeof(vmsg), "no cluster CLID found for outbound call, using key %s", key);
 		agi_verbose(s, vmsg,1);
 	}
 
 
 	//if there is an extension CLID or RDNIS CLID then it trumps the line and cluster CLID 
 	if (s->call->caller_is_local) {
-		strcpy(clidphone, sqlQueryBind1("SELECT callerid FROM IPphone WHERE pkey=?", s->call->callerid));		
+		sqlclid = sqlQueryBind1("SELECT callerid FROM IPphone WHERE pkey=?", s->call->callerid);
+		strlcpy(clidphone, sqlclid ? sqlclid : "", sizeof(clidphone));
 	}
 	// if the RDNIS is local, set its CLID into clidphone
 	else if (s->call->rdnis_is_local) {
-		strcpy(clidphone, sqlQueryBind1("SELECT callerid FROM IPphone WHERE pkey=?", s->call->rdnis));
+		sqlclid = sqlQueryBind1("SELECT callerid FROM IPphone WHERE pkey=?", s->call->rdnis);
+		strlcpy(clidphone, sqlclid ? sqlclid : "", sizeof(clidphone));
 	}
 
 	// Only take the extension clid if it is longer than 5 characters (i.e. - not an extension number)
 	// we do not want to send an extension number CLID onto the PSTN
 	if (strcmp(clidphone, "") && (strlen(clidphone) > 5)) {
-		strcpy(clidwork, clidphone);
-		sprintf (vmsg,"Extension CLID %s found for outbound call, using key %s", clidwork, key);
+		strlcpy(clidwork, clidphone, sizeof(clidwork));
+		snprintf(vmsg, sizeof(vmsg), "Extension CLID %s found for outbound call, using key %s", clidwork, key);
 		agi_verbose(s, vmsg,1);
 	}
 	else {
-		sprintf (vmsg,"No PSTN extension CLID found for outbound call, using clid %s", clidphone);
+		snprintf(vmsg, sizeof(vmsg), "No PSTN extension CLID found for outbound call, using clid %s", clidphone);
 		agi_verbose(s, vmsg,1);
 	}
 
-	sprintf (vmsg,"Phase 1 CLID is %s for outbound call, using key %s", clidwork, key);
+	snprintf(vmsg, sizeof(vmsg), "Phase 1 CLID is %s for outbound call, using key %s", clidwork, key);
 	agi_verbose(s, vmsg,1);
 
 	// At this point we should have a CLID in clidwork if we don't then we should just go with what we were given 
@@ -3191,9 +3140,9 @@ void outboundClip(agi_session_t *s, char *key)
 	if (strcmp(clidwork,"")) {
 		// If this is a locally originated call then we can use the CLID we found
 		if (s->call->caller_is_local) {
-			sprintf (vmsg,"Using CLID %s for outbound call, using key %s", clidwork, key);
+			snprintf(vmsg, sizeof(vmsg), "Using CLID %s for outbound call, using key %s", clidwork, key);
 			agi_verbose(s, vmsg,1);
-			sprintf(clidstrng,"CALLERID(number)=%s",clidwork);
+			snprintf(clidstrng, sizeof(clidstrng), "CALLERID(number)=%s", clidwork);
 			agi_exec(s, "Set", clidstrng);		
 		
 			// if the RDNIS is set (which covers local diversions) then reset it to the CLID to make it safe.  
@@ -3202,9 +3151,9 @@ void outboundClip(agi_session_t *s, char *key)
 			// (rather than a pbx divert, e.g. *21*) and the phone has set the RDNIS to the original callerid.
 		
 			if (s->call->rdnis_is_set) {
-				sprintf (vmsg,"Using CLID %s to override local RDNIS", clidwork);
+				snprintf(vmsg, sizeof(vmsg), "Using CLID %s to override local RDNIS", clidwork);
 				agi_verbose(s, vmsg,1);
-				sprintf(clidstrng,"CALLERID(RDNIS)=%s",clidwork);
+				snprintf(clidstrng, sizeof(clidstrng), "CALLERID(RDNIS)=%s", clidwork);
 				agi_exec(s, "Set", clidstrng);
 			}
 		}
@@ -3212,13 +3161,13 @@ void outboundClip(agi_session_t *s, char *key)
 		// diversion header.
 		
 		else {
-			sprintf(clidstrng,"CALLERID(RDNIS)=%s",clidwork);
+			snprintf(clidstrng, sizeof(clidstrng), "CALLERID(RDNIS)=%s", clidwork);
 			agi_exec(s, "Set", clidstrng);
 		}
 	}   
 	else {
 		// we have no CLID to set so just log it
-		sprintf (vmsg,"No override CLID found for outbound call, using key %s", key);
+		snprintf(vmsg, sizeof(vmsg), "No override CLID found for outbound call, using key %s", key);
 		agi_verbose(s, vmsg,1);
 	}
 	return;
