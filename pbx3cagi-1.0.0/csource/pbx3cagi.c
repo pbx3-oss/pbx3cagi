@@ -786,44 +786,78 @@ void AgentUnpause(agi_session_t *s)
     agi_exec(s, "Playback", "beep");
 }
 
-//ToDo needs to become extenSpy
+// ChanSpy targets PJSIP/{shortuid} — channel names are never PJSIP/{pkey}.
+static int chanspy_resolve_endpoint(agi_session_t *s, const char *dialed_pkey,
+                                   char *endpoint, size_t endpoint_sz)
+{
+    const char *suid;
+
+    if (endpoint == NULL || endpoint_sz == 0) {
+        return -1;
+    }
+    endpoint[0] = '\0';
+    if (dialed_pkey == NULL || dialed_pkey[0] == '\0') {
+        return -1;
+    }
+
+    sqlQueryBind2("SELECT shortuid FROM ipphone WHERE pkey=? AND cluster=?",
+                  dialed_pkey, s->call->myCluster);
+    suid = rescols[0];
+    if (suid == NULL || suid[0] == '\0') {
+        /* Fall back: cluster may still store pkey/KSUID alias on some rows. */
+        sqlQueryBind1("SELECT shortuid FROM ipphone WHERE pkey=?", dialed_pkey);
+        suid = rescols[0];
+    }
+    if (suid == NULL || suid[0] == '\0') {
+        snprintf(vmsg, sizeof(vmsg), "ChanSpy: no shortuid for pkey=%s cluster=%s",
+                 dialed_pkey, s->call->myCluster);
+        DebugFunctionMsg(__FUNCTION__, vmsg);
+        return -1;
+    }
+    strlcpy(endpoint, suid, endpoint_sz);
+    return 0;
+}
+
 void ChanSpyWhisper(agi_session_t *s)
 {
     
     DebugFunctionTrace(__FUNCTION__);
 
     char ext[MAX_EXT_LEN] = {'\0'};
-    char options[32] = {'\0'};
+    char endpoint[MAX_EXT_LEN] = {'\0'};
+    char options[64] = {'\0'};
     if (Authenticate(s, "SPYPASS") != 0) //** spy_pass is held in the tenant table (used to be in Globals)
     {
         return;
     }
  
     GetExt(ext, sizeof(ext), PARM_CMD);
-    strlcpy(options, SIPDRIVER, sizeof(options));
-    strlcat(options, ext, sizeof(options));
-    strlcat(options, ",qw", sizeof(options));
+    if (chanspy_resolve_endpoint(s, ext, endpoint, sizeof(endpoint)) != 0) {
+        agi_exec(s, "Playback", "pbx-invalid");
+        return;
+    }
+    snprintf(options, sizeof(options), "%s/%s,qw", SIPDRIVER, endpoint);
     agi_exec(s, "ChanSpy", options);
 }
 
-//ToDo needs to become extenSpy
 void ChanSpy(agi_session_t *s)
 {
     
     DebugFunctionTrace(__FUNCTION__);
 
     char ext[MAX_EXT_LEN] = {'\0'};
-    char options[32] = {'\0'};
+    char endpoint[MAX_EXT_LEN] = {'\0'};
+    char options[64] = {'\0'};
     if (Authenticate(s, "SPYPASS") != 0) //** spy_pass is held in the tenant table (used to be in Globals)
     {
         return;
     }
-//    strlcpy(ext, myClusterId, sizeof(ext));
     GetExt(ext, sizeof(ext), PARM_CMD);
-    strlcpy(options, SIPDRIVER, sizeof(options));
-    strlcat(options, "/", sizeof(options));
-    strlcat(options, ext, sizeof(options));
-    strlcat(options, ",q", sizeof(options));
+    if (chanspy_resolve_endpoint(s, ext, endpoint, sizeof(endpoint)) != 0) {
+        agi_exec(s, "Playback", "pbx-invalid");
+        return;
+    }
+    snprintf(options, sizeof(options), "%s/%s,q", SIPDRIVER, endpoint);
     agi_exec(s, "ChanSpy", options);
 }
 

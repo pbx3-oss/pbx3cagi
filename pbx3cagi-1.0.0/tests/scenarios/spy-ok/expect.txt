@@ -1,3 +1,3 @@
 must EXEC Authenticate
-must EXEC ChanSpy
+must EXEC ChanSpy PJSIP/testex01,q
 exit 0

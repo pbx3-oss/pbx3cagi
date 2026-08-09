@@ -1,3 +1,9 @@
+pbx3cagi (1.0.0-16) stable; urgency=medium
+
+  * ChanSpy/Whisper: resolve dialled pkey to PJSIP shortuid (was PJSIP/{pkey} — no audio).
+
+ -- Aelintra Telecom Limited <support@aelintra.com>  Sun, 09 Aug 2026 17:45:00 -0400
+
 pbx3cagi (1.0.0-15) stable; urgency=medium
 
   * Safety: GetExt/Mangle caller buffers (no stack returns); outboundClip/CFCheck/vmbox sized copies.
