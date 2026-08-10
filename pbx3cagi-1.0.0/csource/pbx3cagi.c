@@ -1128,7 +1128,7 @@ void OutTrunk(agi_session_t *s, char *key)
 
 /**
  * Tenant short dial (PrefixDial) — fleet only.
- * GenAst: exten => _81X.,1,agi(...,PrefixDial,81,{cluster},,,)
+ * GenAst: exten => _81XXXX,1,agi(...,PrefixDial,81,{cluster},,,)  (remainder = dest ext_len)
  * DNID 811000 → remainder 1000 → Dial PJSIP/Egress/sip:1000@{target_fqdn}
  * CallerID num = phone_suid@calling_tenant_fqdn; name = "pkey human".
  * Rule 1: resolve target_fqdn from local dialalias row only (no live GK).
@@ -1149,6 +1149,31 @@ static int prefixdial_digits_only(const char *s)
         }
     }
     return 1;
+}
+
+/** Look up dest ext_len from local cluster (FQDN); 0 if unknown. */
+static int prefixdial_dest_ext_len(const char *target_fqdn)
+{
+    const char *raw;
+    int n;
+
+    if (target_fqdn == NULL || target_fqdn[0] == '\0')
+    {
+        return 0;
+    }
+    raw = sqlQueryBind1(
+        "SELECT ext_len FROM cluster WHERE lower(trim(fqdn)) = lower(trim(?)) LIMIT 1",
+        target_fqdn);
+    if (raw == NULL || rescols[0][0] == '\0')
+    {
+        return 0;
+    }
+    n = atoi(rescols[0]);
+    if (n < 2 || n > 5)
+    {
+        return 0;
+    }
+    return n;
 }
 
 static void prefixdial_deny(agi_session_t *s)
@@ -1228,6 +1253,24 @@ void PrefixDial(agi_session_t *s)
         DebugFunctionMsg(__FUNCTION__, "inactive or empty target_fqdn — deny");
         prefixdial_deny(s);
         return;
+    }
+
+    /* Wrong-length remainder when dest is local (GenAst already fixed-width; defense in depth). */
+    {
+        int dest_len = prefixdial_dest_ext_len(target_fqdn);
+        size_t rem_len = strlen(remainder);
+        if (dest_len > 0 && (int)rem_len != dest_len)
+        {
+            DebugFunctionMsg(__FUNCTION__, "wrong-length remainder — deny");
+            prefixdial_deny(s);
+            return;
+        }
+        if (dest_len == 0 && (rem_len < 2 || rem_len > 5))
+        {
+            DebugFunctionMsg(__FUNCTION__, "remainder length out of 2–5 — deny");
+            prefixdial_deny(s);
+            return;
+        }
     }
 
     /* Resolve calling phone → shortuid + display fields (pkey then shortuid). */
