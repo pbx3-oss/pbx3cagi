@@ -1,3 +1,10 @@
+pbx3cagi (1.0.0-17) stable; urgency=medium
+
+  * #4c: PrefixDial reject wrong-length remainder vs local dest ext_len
+    (else require 2–5 digits); GenAst emits fixed-width patterns.
+
+ -- Aelintra Telecom Limited <support@aelintra.com>  Mon, 10 Aug 2026 13:25:00 -0400
+
 pbx3cagi (1.0.0-16) stable; urgency=medium
 
   * ChanSpy/Whisper: resolve dialled pkey to PJSIP shortuid (was PJSIP/{pkey} — no audio).
