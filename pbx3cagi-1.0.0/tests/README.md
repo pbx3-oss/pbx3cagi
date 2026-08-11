@@ -66,6 +66,7 @@ Scenarios use **`astdb.json`** per scenario (`family/key` → value). See `fixtu
 | `cfim-local` | LepDial | CFIM → local ext; no comfort tones |
 | `cfim-external` | LepDial | CFIM → PSTN; hold clip |
 | `lepdial-fleet` | LepDial + `PBX3_FLEET_MODE=1` | `PBX3_DIAL` includes `sip:suid@tenant.fqdn` |
+| `lepdial-fleet-sitedial` | LepDial + fleet + `PBX3_SITE_DIAL=YES` | local `PJSIP/suid` only (no FQDN hairpin) |
 | `dial-queue-predial` | Dial … queue | Phase E: `PBX3_DIAL` = `PJSIP/suid,,`; no `EXEC Dial` |
 | `postdial-noanswer-vm` | PostDial + `DIALSTATUS=NOANSWER` | `EXEC Voicemail` |
 | `postdial-answer-noop` | PostDial + `DIALSTATUS=ANSWER` | no Voicemail / Dial / Playback |

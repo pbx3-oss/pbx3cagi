@@ -1,0 +1,4 @@
+must SET VARIABLE PBX3_DIAL "PJSIP/testex01,20,ktT"
+must-not SET VARIABLE PBX3_DIAL "PJSIP/testex01/sip:testex01@testtn01.pbx3.local,20,ktT"
+must-not EXEC Dial
+exit 0

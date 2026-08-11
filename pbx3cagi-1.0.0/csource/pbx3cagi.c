@@ -1822,10 +1822,24 @@ void PrepDial(agi_session_t *s, char *number, char *type, char *twin, char *vmbo
  *  Site-dial receive (§3.9 / D): when __PBX3_RETURN_AOR is set, dial via
  *  endpoint SiteRing (send_pai=no) so dialplan PAI (return AoR) is not
  *  overwritten by CALLERID presentation (extension digits).
+ *
+ *  Slice B hairpin guard: SbcDomainRoute sets __PBX3_SITE_DIAL=YES on digit
+ *  R-URI arrivals (usrloc miss → dispatcher → home). Magrathea already proved
+ *  no Contact — do NOT Dial sip:user@tenant.fqdn again (loops). Local
+ *  Dial(PJSIP/shortuid) → CHANUNAVAIL → PostDial → voicemail/CFBS.
+ *  Carrier DID Ingress does not set SITE_DIAL; first FQDN Dial still runs.
  */
     {
         char ring_ep[80] = {'\0'};
         int site_return = 0;
+        int site_dial_inbound = 0;
+
+        agi_get_variable(s, "PBX3_SITE_DIAL");
+        if (s->res->data[0] != '\0' && strcmp(s->res->data, "(null)") != 0 &&
+            strcmp(s->res->data, "YES") == 0)
+        {
+            site_dial_inbound = 1;
+        }
 
         agi_get_variable(s, "PBX3_RETURN_AOR");
         if (pbx3_fleet_mode() && s->res->data[0] != '\0' &&
@@ -1842,12 +1856,20 @@ void PrepDial(agi_session_t *s, char *number, char *type, char *twin, char *vmbo
         strlcpy(dialString, SIPDRIVER, sizeof(dialString));
         strlcat(dialString, "/", sizeof(dialString));
         strlcat(dialString, ring_ep, sizeof(dialString));
-        if (pbx3_fleet_mode() && g_cluster_cfg.fqdn[0] != '\0')
+        /* Fleet FQDN Dial only on first attempt (not Slice B / hairpin re-entry). */
+        if (pbx3_fleet_mode() && g_cluster_cfg.fqdn[0] != '\0' && !site_dial_inbound)
         {
             strlcat(dialString, "/sip:", sizeof(dialString));
             strlcat(dialString, number, sizeof(dialString));
             strlcat(dialString, "@", sizeof(dialString));
             strlcat(dialString, g_cluster_cfg.fqdn, sizeof(dialString));
+        }
+        else if (site_dial_inbound && debug)
+        {
+            snprintf(vmsg, sizeof(vmsg),
+                     "PrepDial SITE_DIAL inbound — local Dial only (no FQDN hairpin) for %s",
+                     number);
+            DebugFunctionMsg(__FUNCTION__, vmsg);
         }
         /* stash flag for option append below */
         if (site_return)
