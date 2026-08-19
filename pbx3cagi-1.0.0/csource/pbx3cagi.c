@@ -2055,7 +2055,7 @@ char * SetRecord(agi_session_t *s, char *key, char *compass)
  */
     if (!strcmp(devicerec, "None"))
     {
-        return 0;
+        return pdial;
     }
 /**
  *  If there's a rec value in the phone, use it
