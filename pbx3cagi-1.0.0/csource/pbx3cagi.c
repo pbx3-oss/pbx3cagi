@@ -2391,6 +2391,70 @@ char *StripPreselect(char *preSel, char *number)
     return number;
 }
 
+/**
+ * Normalize caller ID to digits-only for clid_block lookup (fail-open on empty/short).
+ */
+static void normalize_clid_digits(const char *in, char *out, size_t outlen)
+{
+    size_t i;
+    size_t j = 0;
+
+    if (outlen == 0)
+    {
+        return;
+    }
+    out[0] = '\0';
+    if (in == NULL)
+    {
+        return;
+    }
+    for (i = 0; in[i] != '\0' && j + 1 < outlen; i++)
+    {
+        if (isdigit((unsigned char)in[i]))
+        {
+            out[j++] = in[i];
+        }
+    }
+    out[j] = '\0';
+}
+
+/**
+ * Tenant CLID block (Phase 1): reject inbound when active row matches digits-only CLID.
+ * Fail open when cluster/CLID missing or lookup misses.
+ */
+static int clid_block_should_reject(const char *cluster, const char *callerid)
+{
+    char norm[64];
+
+    if (cluster == NULL || cluster[0] == '\0')
+    {
+        return 0;
+    }
+    if (callerid == NULL || callerid[0] == '\0')
+    {
+        return 0;
+    }
+    normalize_clid_digits(callerid, norm, sizeof(norm));
+    if (norm[0] == '\0' || strlen(norm) < 6)
+    {
+        return 0;
+    }
+
+    sqlQueryBind2(
+        "SELECT action FROM clid_block WHERE cluster=? AND pkey=? AND active='YES' LIMIT 1",
+        cluster,
+        norm);
+    if (rescols[0][0] == '\0')
+    {
+        return 0;
+    }
+    if (!strcasecmp(rescols[0], "hangup"))
+    {
+        return 1;
+    }
+    return 0;
+}
+
 void Ingress(agi_session_t *s)
 {
     
@@ -2432,7 +2496,7 @@ void Ingress(agi_session_t *s)
         agi_exec(s, "Set", df_ingress);
     }
 
-    sqlQueryBind1("SELECT technology,tag,inprefix,alertinfo,moh,swoclip FROM inroutes WHERE pkey=?", PARM_KEY);
+    sqlQueryBind1("SELECT technology,tag,inprefix,alertinfo,moh,swoclip,cluster FROM inroutes WHERE pkey=?", PARM_KEY);
     strlcpy(technology, rescols[0], sizeof(technology));
     strlcpy(tag, rescols[1], sizeof(tag));
     strlcpy(prefix, rescols[2], sizeof(prefix));
@@ -2495,6 +2559,12 @@ void Ingress(agi_session_t *s)
     {
         snprintf(clidstrng, sizeof(clidstrng), "CALLERID(name)=%s", s->call->calleridname);
         agi_exec(s, "Set", clidstrng);
+    }
+
+    if (clid_block_should_reject(rescols[6], s->call->callerid))
+    {
+        agi_exec(s, "Hangup", "");
+        return;
     }
 
     if (strcmp(g_cluster_cfg.lterm_str, "YES"))

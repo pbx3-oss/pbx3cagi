@@ -71,6 +71,7 @@ Scenarios use **`astdb.json`** per scenario (`family/key` → value). See `fixtu
 | `postdial-noanswer-vm` | PostDial + `DIALSTATUS=NOANSWER` | `EXEC Voicemail` |
 | `postdial-answer-noop` | PostDial + `DIALSTATUS=ANSWER` | no Voicemail / Dial / Playback |
 | `sched-open-legacy` | Ingress | No profile → openroute |
+| `clid-block-reject` | Ingress + `seed_patch.sql` | blocked CLID → Hangup |
 | `sched-closed-oclo` | Ingress + `seed_patch.sql` | closed → closeroute |
 | `sched-open-profile` | Ingress | profile open → dest |
 | `sched-mode-lunch-profile` | Ingress + patch | `sched_mode=lunch` → profile line |

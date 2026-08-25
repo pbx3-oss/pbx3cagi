@@ -107,6 +107,18 @@ CREATE TABLE IF NOT EXISTS route_profile_line (
     UNIQUE("profile", "mode")
 );
 
+CREATE TABLE IF NOT EXISTS clid_block (
+    "id" TEXT PRIMARY KEY,
+    "shortuid" TEXT UNIQUE,
+    "pkey" TEXT NOT NULL,
+    "active" TEXT DEFAULT 'YES',
+    "cluster" TEXT DEFAULT 'default',
+    "action" TEXT DEFAULT 'hangup',
+    "cname" TEXT,
+    "description" TEXT,
+    UNIQUE("cluster", "pkey")
+);
+
 CREATE TABLE IF NOT EXISTS inroutes (
     "id" TEXT PRIMARY KEY,
     "shortuid" TEXT UNIQUE,
@@ -130,6 +142,7 @@ DELETE FROM route_profile_line;
 DELETE FROM route_profile;
 DELETE FROM ipphone;
 DELETE FROM dialalias;
+DELETE FROM clid_block;
 DELETE FROM trunks;
 DELETE FROM cluster;
 DELETE FROM globals;

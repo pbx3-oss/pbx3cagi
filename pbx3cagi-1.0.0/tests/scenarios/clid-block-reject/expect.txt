@@ -1,0 +1,2 @@
+must EXEC Hangup
+exit 0
