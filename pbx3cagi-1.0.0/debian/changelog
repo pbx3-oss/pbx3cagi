@@ -1,3 +1,12 @@
+pbx3cagi (1.0.0-19) stable; urgency=medium
+
+  * Reject inbound calls whose caller ID digits match tenant clid_block rows
+    (CLID blacklist Phase 1).
+  * SetRecord: return empty string instead of NULL when devicerec is None
+    (avoids AGI crash on unset record flag).
+
+ -- Aelintra Telecom Limited <support@aelintra.com>  Thu, 27 Aug 2026 13:06:34 -0400
+
 pbx3cagi (1.0.0-18) stable; urgency=medium
 
   * PrepDial: on __PBX3_SITE_DIAL (Slice B usrloc-miss → home) Dial local
