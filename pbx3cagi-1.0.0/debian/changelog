@@ -1,3 +1,10 @@
+pbx3cagi (1.0.0-21) stable; urgency=medium
+
+  * Agent login/out/pause: AddQueueMember uses queue shortuid (GenAst name),
+    not agent.queueN pkey; member channel Local/Q{ext}@tenant (PrepDial path).
+
+ -- Aelintra Telecom Limited <support@aelintra.com>  Fri, 25 Sep 2026 13:05:00 -0400
+
 pbx3cagi (1.0.0-20) stable; urgency=medium
 
   * Distinctive ring: set __PBX3_ALERT_INFO and Dial b(pbx3-pre-dial) so

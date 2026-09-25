@@ -590,6 +590,51 @@ int GetRecOption(agi_session_t *s)
     return '3';
 }
 
+/*
+ * agent.queueN stores queue pkey; GenAst names the Asterisk queue by shortuid.
+ * Returns 0 and fills ast_name on success; -1 to skip (None / missing).
+ */
+static int agent_resolve_queue_name(agi_session_t *s, const char *queue_pkey,
+                                    char *ast_name, size_t ast_name_sz)
+{
+    const char *suid;
+
+    if (ast_name == NULL || ast_name_sz == 0) {
+        return -1;
+    }
+    ast_name[0] = '\0';
+    if (queue_pkey == NULL || queue_pkey[0] == '\0' || !strcmp(queue_pkey, "None")) {
+        return -1;
+    }
+
+    sqlQueryBind2("SELECT shortuid FROM queue WHERE pkey=? AND cluster=?",
+                  queue_pkey, s->call->myCluster);
+    suid = rescols[0];
+    if (suid == NULL || suid[0] == '\0') {
+        sqlQueryBind1("SELECT shortuid FROM queue WHERE pkey=?", queue_pkey);
+        suid = rescols[0];
+    }
+    /* Defensive: already a shortuid in agent.queueN (mis-seeded rows). */
+    if (suid == NULL || suid[0] == '\0') {
+        sqlQueryBind1("SELECT shortuid FROM queue WHERE shortuid=?", queue_pkey);
+        suid = rescols[0];
+    }
+    if (suid == NULL || suid[0] == '\0') {
+        snprintf(vmsg, sizeof(vmsg), "Agent: no queue shortuid for pkey=%s cluster=%s",
+                 queue_pkey, s->call->myCluster);
+        DebugFunctionMsg(__FUNCTION__, vmsg);
+        return -1;
+    }
+    strlcpy(ast_name, suid, ast_name_sz);
+    return 0;
+}
+
+/* Static queue members use Local/Q{ext}@tenant (PrepDial queue path). */
+static void agent_member_local(char *buf, size_t bufsz, const char *ext, const char *context)
+{
+    snprintf(buf, bufsz, "Local/Q%s@%s", ext, context);
+}
+
 void AgentLogin(agi_session_t *s)
 {
     
@@ -602,10 +647,12 @@ void AgentLogin(agi_session_t *s)
     char agentpasswd[8] = {'\0'};          // dtmf agent passwd
     char queuearg[256] = {'\0'};           // argument for the AddQueueMember/RemoveQueuMember
     char agentqueue[32] = {'\0'};          // used to construct the queue column
-    char queuename[32] = {'\0'};           // queuename
+    char queue_pkey[32] = {'\0'};          // agent.queueN value (queue pkey)
+    char queuename[32] = {'\0'};           // Asterisk queue name (shortuid)
     char extenAgent[MAX_EXT_LEN] = {'\0'}; // holds exten if an agent is already logged in
-    char agentchan[64] = {'\0'};           // full channel name - i.e. local/401@context
-    char statechan[64] = {'\0'};           // state channel - i.e. PJSIP/401@context
+    char agentchan[64] = {'\0'};           // Local/Q{ext}@{tenant}
+    char remove_chan[64] = {'\0'};
+    char remove_ext[MAX_EXT_LEN] = {'\0'};
     char buffer[1024] = {'\0'};            // QLOG buffer
     char epoch[32] = {'\0'};               // ${EPOCH}
     char startepoch[32] = {'\0'};          // ${EPOCH} saved from a previous login
@@ -619,12 +666,7 @@ void AgentLogin(agi_session_t *s)
     snprintf(f_dAgent, sizeof(f_dAgent), "%s/dAgent", s->call->myClusterContext);
     snprintf(f_dynLogin, sizeof(f_dynLogin), "%s/DYNLOGIN", s->call->myClusterContext);
 
-    strlcpy(agentchan, "Local/", sizeof(agentchan));
-    strlcat(agentchan, s->call->callerid, sizeof(agentchan));
-    strlcat(agentchan, "@", sizeof(agentchan));
-    strlcat(agentchan, s->call->myClusterContext, sizeof(agentchan));
-    strlcpy(statechan, "Local/", sizeof(statechan));
-    strlcat(statechan, s->call->callerid, sizeof(statechan));
+    agent_member_local(agentchan, sizeof(agentchan), s->call->callerid, s->call->myClusterContext);
 
     agi_get_data(s, "agent-user", 7000, 5);
 
@@ -652,15 +694,20 @@ void AgentLogin(agi_session_t *s)
                         strlcpy(startepoch, DBGet(s, f_dynLogin, oldagent), sizeof(startepoch));
                         agi_get_variable(s, "EPOCH"); //Asterisk system variable EPOCH
                         strlcpy(epoch, s->res->data, sizeof(epoch));
+                        strlcpy(remove_ext, DBGet(s, f_dAgent, oldagent), sizeof(remove_ext));
+                        if (remove_ext[0] == '\0') {
+                            strlcpy(remove_ext, s->call->callerid, sizeof(remove_ext));
+                        }
+                        agent_member_local(remove_chan, sizeof(remove_chan), remove_ext,
+                                           s->call->myClusterContext);
                         for (i = 1; i < 7; i++)
                         {
                             snprintf(agentqueue, sizeof(agentqueue), "queue%i", i);
                             snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM agent WHERE pkey=?", agentqueue);
-                            strlcpy(queuename, sqlQueryBind1(myQuery, oldagent), sizeof(queuename));
-                            if (strcmp(queuename, "None"))
+                            strlcpy(queue_pkey, sqlQueryBind1(myQuery, oldagent), sizeof(queue_pkey));
+                            if (agent_resolve_queue_name(s, queue_pkey, queuename, sizeof(queuename)) == 0)
                             {
-                                //								snprintf (queuearg, sizeof(queuearg), "%s%sLocal/%s@queues",queuename,ASTDLIM,extenAgent);
-                                snprintf(queuearg, sizeof(queuearg), "%s,%s", queuename, agentchan);
+                                snprintf(queuearg, sizeof(queuearg), "%s,%s", queuename, remove_chan);
                                 agi_exec(s, "RemoveQueueMember", queuearg);
                             }
                         }
@@ -679,8 +726,8 @@ void AgentLogin(agi_session_t *s)
                     {
                         snprintf(agentqueue, sizeof(agentqueue), "queue%i", i);
                         snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM agent WHERE pkey=?", agentqueue);
-                        strlcpy(queuename, sqlQueryBind1(myQuery, agent), sizeof(queuename));
-                        if (strcmp(queuename, "None"))
+                        strlcpy(queue_pkey, sqlQueryBind1(myQuery, agent), sizeof(queue_pkey));
+                        if (agent_resolve_queue_name(s, queue_pkey, queuename, sizeof(queuename)) == 0)
                         {
                             snprintf(queuearg, sizeof(queuearg), "%s,%s,,,Agent/%s",
                                      queuename, agentchan, agent);
@@ -716,9 +763,9 @@ void AgentLogout(agi_session_t *s)
     char agentpasswd[8] = {'\0'}; // dtmf agent passwd
     char queuearg[256] = {'\0'};  // argument for the AddQueueMember/RemoveQueuMember
     char agentqueue[32] = {'\0'}; // used to construct the queue column
-    char queuename[32] = {'\0'};  // queuename
-    char agentchan[64] = {'\0'};  // full channel name - i.e. local/401@extensions
-    char statechan[64] = {'\0'};  // state channel - i.e. PJSIP/401@extensions
+    char queue_pkey[32] = {'\0'};
+    char queuename[32] = {'\0'};  // Asterisk queue name (shortuid)
+    char agentchan[64] = {'\0'};  // Local/Q{ext}@{tenant}
     char buffer[1024] = {'\0'};   // QLOG buffer
     char epoch[32] = {'\0'};      // ${EPOCH}
     char startepoch[32] = {'\0'}; // ${EPOCH} saved from login
@@ -731,12 +778,7 @@ void AgentLogout(agi_session_t *s)
     snprintf(f_dAgent, sizeof(f_dAgent), "%s/dAgent", s->call->myClusterContext);
     snprintf(f_dynLogin, sizeof(f_dynLogin), "%s/DYNLOGIN", s->call->myClusterContext);
 
-    strlcpy(agentchan, "Local/", sizeof(agentchan));
-    strlcat(agentchan, s->call->callerid, sizeof(agentchan));
-    strlcat(agentchan, "@", sizeof(agentchan));
-    strlcat(agentchan, s->call->myClusterContext, sizeof(agentchan));
-    strlcpy(statechan, "Local/", sizeof(statechan));
-    strlcat(statechan, s->call->callerid, sizeof(statechan));
+    agent_member_local(agentchan, sizeof(agentchan), s->call->callerid, s->call->myClusterContext);
 
     strcpy(agent, DBGet(s, f_eAgent, s->call->callerid));
     strlcpy(agentpasswd, sqlQueryBind1("SELECT passwd FROM agent WHERE pkey=?", agent), sizeof(agentpasswd));
@@ -758,8 +800,8 @@ void AgentLogout(agi_session_t *s)
     {
         snprintf(agentqueue, sizeof(agentqueue), "queue%i", i);
         snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM agent WHERE pkey=?", agentqueue);
-        strlcpy(queuename, sqlQueryBind1(myQuery, agent), sizeof(queuename));
-        if (strcmp(queuename, "None"))
+        strlcpy(queue_pkey, sqlQueryBind1(myQuery, agent), sizeof(queue_pkey));
+        if (agent_resolve_queue_name(s, queue_pkey, queuename, sizeof(queuename)) == 0)
         {
             snprintf(queuearg, sizeof(queuearg), "%s,%s", queuename, agentchan);
             agi_exec(s, "RemoveQueueMember", queuearg);
@@ -792,7 +834,7 @@ void AgentPause(agi_session_t *s)
 
     if (strcmp(agent, ""))
     {
-        snprintf(queuearg, sizeof(queuearg), ",Local/%s@%s", s->call->callerid, s->call->myClusterContext);
+        snprintf(queuearg, sizeof(queuearg), ",Local/Q%s@%s", s->call->callerid, s->call->myClusterContext);
         agi_exec(s, "PauseQueueMember", queuearg);
     }
     agi_exec(s, "Playback", "beep");
@@ -812,7 +854,7 @@ void AgentUnpause(agi_session_t *s)
 
     if (strcmp(agent, ""))
     {
-        snprintf(queuearg, sizeof(queuearg), ",Local/%s@%s", s->call->callerid, s->call->myClusterContext);
+        snprintf(queuearg, sizeof(queuearg), ",Local/Q%s@%s", s->call->callerid, s->call->myClusterContext);
         agi_exec(s, "UnPauseQueueMember", queuearg);
     }
     agi_exec(s, "Playback", "beep");
