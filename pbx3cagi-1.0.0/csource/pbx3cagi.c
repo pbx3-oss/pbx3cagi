@@ -1346,7 +1346,7 @@ void PrefixDial(agi_session_t *s)
         {
             strlcpy(clidname, phone_pkey, sizeof(clidname));
         }
-        snprintf(setclid, sizeof(setclid), "CALLERID(name)=%s", clidname);
+        snprintf(setclid, sizeof(setclid), "CALLERID(name)=\"%s\"", clidname);
         agi_exec(s, "Set", setclid);
     }
 
@@ -2557,7 +2557,7 @@ void Ingress(agi_session_t *s)
     //	Alphatag
     if (strcmp(s->call->calleridname, ""))
     {
-        snprintf(clidstrng, sizeof(clidstrng), "CALLERID(name)=%s", s->call->calleridname);
+        snprintf(clidstrng, sizeof(clidstrng), "CALLERID(name)=\"%s\"", s->call->calleridname);
         agi_exec(s, "Set", clidstrng);
     }
 
@@ -2879,11 +2879,14 @@ void IVR(agi_session_t *s, char *ivrname)
     int ivrdigitwait = 6000;
     int i;
 
-    strlcat(ivrsilence, "6", sizeof(ivrsilence));
-
+    /* Asterisk sound silence/N — seconds to wait for a digit after the greeting. */
     if (g_cluster_cfg.ivr_key_wait[0] != '\0')
     {
         strlcat(ivrsilence, g_cluster_cfg.ivr_key_wait, sizeof(ivrsilence));
+    }
+    else
+    {
+        strlcat(ivrsilence, "6", sizeof(ivrsilence));
     }
 
     if (g_cluster_cfg.ivr_digit_wait_str[0] != '\0')
@@ -2935,7 +2938,7 @@ void IVR(agi_session_t *s, char *ivrname)
         if (strcmp(sqlQueryBind1("SELECT listenforext FROM ivrmenu WHERE pkey=?", PARM_KEY), "YES"))
         {
             agi_stream_file(s, msg, optionStr, 0);
-            if (strcmp(optionStr, "") && atoi(s->res->result))
+            if (strcmp(optionStr, "") && atoi(s->res->result) > 0)
             {
                 snprintf(dtmf, sizeof(dtmf), "%c", atoi(s->res->result));
                 IVRAction(s, PARM_KEY, dtmf);
@@ -2944,7 +2947,7 @@ void IVR(agi_session_t *s, char *ivrname)
             if (strcmp(optionStr, ""))
             {
                 agi_stream_file(s, ivrsilence, optionStr, 0);
-                if (strcmp(optionStr, "") && atoi(s->res->result))
+                if (strcmp(optionStr, "") && atoi(s->res->result) > 0)
                 {
                     snprintf(dtmf, sizeof(dtmf), "%c", atoi(s->res->result));
                     IVRAction(s, PARM_KEY, dtmf);
@@ -2959,7 +2962,7 @@ void IVR(agi_session_t *s, char *ivrname)
         else
         {
             agi_get_data(s, msg, ivrdigitwait, 4);
-            if (atoi(s->res->result))
+            if (atoi(s->res->result) > 0)
             {
                 // check if it's an extension
                 snprintf(dtmf, sizeof(dtmf), "%s", s->res->result);
@@ -3035,10 +3038,10 @@ void IVRAction(agi_session_t *s, char *menu, char *press)
     { // handle ordinary case
         snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM ivrmenu WHERE pkey=?", dbOption);
         strlcpy(action, sqlQueryBind1(myQuery, menu), sizeof(action));
-        // set Alert-info if present
+        /* Alert-Info for distinctive ring. Skip when the column is empty. */
         snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM ivrmenu WHERE pkey=?", dbAlert);
         strlcpy(alert, sqlQueryBind1(myQuery, menu), sizeof(alert));
-        if (strcmp(alert, ""))
+        if (alert[0] != '\0')
         {
             agi_exec(s, "SIPAddHeader", alert);
         }
@@ -3058,7 +3061,7 @@ void IVRAction(agi_session_t *s, char *menu, char *press)
     //	Alphatag
     if (strcmp(s->call->calleridname, ""))
     {
-        snprintf(clidstrng, sizeof(clidstrng), "CALLERID(name)=%s", s->call->calleridname);
+        snprintf(clidstrng, sizeof(clidstrng), "CALLERID(name)=\"%s\"", s->call->calleridname);
         agi_exec(s, "Set", clidstrng);
     }
     //  Route it

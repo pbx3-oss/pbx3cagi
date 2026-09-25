@@ -44,7 +44,7 @@
 #define PARM_PM2 (*(g_parms.argv+5))
 #define PARM_PM3 (*(g_parms.argv+6))
 #define SQLITEDB "/opt/pbx3/db/sqlite.rdonly.db"
-#define SOUNDIR "/usr/share/asterisk/extra-sounds/"
+#define SOUNDIR "/usr/share/asterisk/sounds/"
 #define QLOG "/var/log/asterisk/queue_log" 
 #define SIPDRIVER "PJSIP"
 #define ASTDLIM ","

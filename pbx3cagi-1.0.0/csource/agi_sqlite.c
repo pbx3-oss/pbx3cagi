@@ -379,6 +379,7 @@ static char *sqlQueryBindInternal(const char *sql, const char *arg1, const char 
     {
         snprintf(vmsg, sizeof(vmsg), "Prepared SQL failed, retval=%i, sql=%s", retval, sql);
         DebugFunctionMsg(__FUNCTION__, vmsg);
+        rescols[0][0] = '\0';
         return pVal;
     }
 
@@ -390,6 +391,7 @@ static char *sqlQueryBindInternal(const char *sql, const char *arg1, const char 
             snprintf(vmsg, sizeof(vmsg), "Bind #1 failed, retval=%i, sql=%s", retval, sql);
             DebugFunctionMsg(__FUNCTION__, vmsg);
             sqlite3_finalize(stmt);
+            rescols[0][0] = '\0';
             return pVal;
         }
     }
@@ -401,6 +403,7 @@ static char *sqlQueryBindInternal(const char *sql, const char *arg1, const char 
             snprintf(vmsg, sizeof(vmsg), "Bind #2 failed, retval=%i, sql=%s", retval, sql);
             DebugFunctionMsg(__FUNCTION__, vmsg);
             sqlite3_finalize(stmt);
+            rescols[0][0] = '\0';
             return pVal;
         }
     }
