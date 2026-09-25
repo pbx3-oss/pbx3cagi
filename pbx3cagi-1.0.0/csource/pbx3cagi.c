@@ -117,6 +117,38 @@ static int pbx3_fleet_mode(void)
     return 0;
 }
 
+/**
+ * Distinctive ring for outbound PJSIP: store Alert-Info value on an inherited
+ * channel var; PrepDial attaches Dial b(pbx3-pre-dial) so PJSIP_HEADER runs on
+ * the INVITE leg. Strips a leading "Alert-Info:" if the DB stored a full header.
+ */
+static void set_pbx3_alert_info(agi_session_t *s, const char *raw)
+{
+    char value[128] = {'\0'};
+    const char *p;
+
+    if (raw == NULL || raw[0] == '\0')
+    {
+        agi_set_variable(s, "__PBX3_ALERT_INFO", "");
+        return;
+    }
+    p = raw;
+    while (*p == ' ' || *p == '\t')
+    {
+        p++;
+    }
+    if (strncasecmp(p, "Alert-Info:", 11) == 0)
+    {
+        p += 11;
+        while (*p == ' ' || *p == '\t')
+        {
+            p++;
+        }
+    }
+    strlcpy(value, p, sizeof(value));
+    agi_set_variable(s, "__PBX3_ALERT_INFO", value);
+}
+
 
 /* Phase 2.1/3 — command table; handlers take agi_session_t *. */
 typedef void (*agi_cmd_fn)(agi_session_t *s);
@@ -1376,7 +1408,7 @@ void PrefixDial(agi_session_t *s)
         snprintf(dialString, sizeof(dialString), "%s/%s/sip:%s@%s",
                  SIPDRIVER, endpoint, remainder, target_fqdn);
         /* b() runs on the outbound PJSIP leg before INVITE */
-        strlcpy(opts, "b(pbx3-site-pai^s^1)", sizeof(opts));
+        strlcpy(opts, "b(pbx3-pre-dial^s^1)", sizeof(opts));
         if (!strcmp(g_cluster_cfg.allowhashxfer, "enabled") && s->call->caller_is_local)
         {
             strlcat(opts, "T", sizeof(opts));
@@ -1611,11 +1643,11 @@ void LepDial(agi_session_t *s)
     }
 
 /**
- *  Add a SIP header if we have one (usually a hook directive or distinctive ring)
+ *  Distinctive ring / Alert-Info on the outbound PJSIP INVITE via Dial b().
  */
     if (strcmp(extalert, ""))
     {
-        agi_exec(s, "SIPAddHeader", extalert);
+        set_pbx3_alert_info(s, extalert);
     }
 
  /**
@@ -1709,7 +1741,7 @@ void PostDial(agi_session_t *s)
                 {
                     if (g_cluster_cfg.bounce_alert[0] != '\0')
                     {
-                        agi_exec(s, "SIPAddHeader", g_cluster_cfg.bounce_alert);
+                        set_pbx3_alert_info(s, g_cluster_cfg.bounce_alert);
                     }
                     strlcpy(calleridsave, s->call->callerid, sizeof(calleridsave));
                     strlcpy(s->call->callerid, "R", sizeof(s->call->callerid));
@@ -1745,7 +1777,7 @@ void PostDial(agi_session_t *s)
 
                 if (g_cluster_cfg.bounce_alert[0] != '\0')
                 {
-                    agi_exec(s, "SIPAddHeader", g_cluster_cfg.bounce_alert);
+                    set_pbx3_alert_info(s, g_cluster_cfg.bounce_alert);
                 }
                 strlcpy(transferer, pBtr, sizeof(transferer));
                 agi_set_priority(s, 1);
@@ -1957,17 +1989,32 @@ void PrepDial(agi_session_t *s, char *number, char *type, char *twin, char *vmbo
         strlcat(dialString, "m", sizeof(dialString));
     }
 /**
- *  Tenant short dial (§3.9 / slice D): attach return AoR as PAI on phone INVITE.
+ *  Tenant short dial (§3.9 / slice D) PAI and/or distinctive-ring Alert-Info:
+ *  one Dial b() gosub on the outbound PJSIP channel before INVITE.
  */
-    agi_get_variable(s, "PBX3_SITE_RING");
-    if (!strcmp(s->res->data, "YES") && strstr(dialString, "pbx3-site-pai") == NULL)
     {
-        if (strcmp(type, "queue") == 0 && strstr(dialString, ",,") == NULL)
+        int need_predial = 0;
+
+        agi_get_variable(s, "PBX3_SITE_RING");
+        if (!strcmp(s->res->data, "YES"))
         {
-            strlcat(dialString, ASTDLIM, sizeof(dialString));
-            strlcat(dialString, ASTDLIM, sizeof(dialString));
+            need_predial = 1;
         }
-        strlcat(dialString, "b(pbx3-site-pai^s^1)", sizeof(dialString));
+        agi_get_variable(s, "PBX3_ALERT_INFO");
+        if (s->res->data[0] != '\0' && strcmp(s->res->data, "(null)") != 0)
+        {
+            need_predial = 1;
+        }
+        if (need_predial && strstr(dialString, "pbx3-pre-dial") == NULL &&
+            strstr(dialString, "pbx3-site-pai") == NULL)
+        {
+            if (strcmp(type, "queue") == 0 && strstr(dialString, ",,") == NULL)
+            {
+                strlcat(dialString, ASTDLIM, sizeof(dialString));
+                strlcat(dialString, ASTDLIM, sizeof(dialString));
+            }
+            strlcat(dialString, "b(pbx3-pre-dial^s^1)", sizeof(dialString));
+        }
     }
 /**
  *  Phase E (queue) + Phase G (LepDial): decide only — set PBX3_DIAL for
@@ -2590,10 +2637,10 @@ void Ingress(agi_session_t *s)
         }
     }
 
-    // distinctive ring (if present)
+    // distinctive ring (if present) — outbound INVITE via Dial b(pbx3-pre-dial)
     if (strcmp(alertinfo, ""))
     {
-        agi_exec(s, "SIPAddHeader", alertinfo);
+        set_pbx3_alert_info(s, alertinfo);
     }
 
     CheckState(s, PARM_KEY);
@@ -3038,12 +3085,12 @@ void IVRAction(agi_session_t *s, char *menu, char *press)
     { // handle ordinary case
         snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM ivrmenu WHERE pkey=?", dbOption);
         strlcpy(action, sqlQueryBind1(myQuery, menu), sizeof(action));
-        /* Alert-Info for distinctive ring. Skip when the column is empty. */
+        /* Alert-Info for distinctive ring on the outbound INVITE (Dial b()). */
         snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM ivrmenu WHERE pkey=?", dbAlert);
         strlcpy(alert, sqlQueryBind1(myQuery, menu), sizeof(alert));
         if (alert[0] != '\0')
         {
-            agi_exec(s, "SIPAddHeader", alert);
+            set_pbx3_alert_info(s, alert);
         }
         snprintf(myQuery, sizeof(myQuery), "SELECT %s FROM ivrmenu WHERE pkey=?", tag);
         strcpy(tagID, sqlQueryBind1(myQuery, menu));
