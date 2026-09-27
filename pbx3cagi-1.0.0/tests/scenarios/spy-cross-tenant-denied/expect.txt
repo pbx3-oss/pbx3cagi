@@ -1,0 +1,4 @@
+must EXEC Authenticate
+must EXEC Playback pbx-invalid
+must-not EXEC ChanSpy
+exit 0

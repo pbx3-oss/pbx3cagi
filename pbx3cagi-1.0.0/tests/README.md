@@ -82,6 +82,7 @@ Scenarios use **`astdb.json`** per scenario (`family/key` → value). See `fixtu
 | `holiday-force-dest` | Ingress | Holiday dest when AUTO |
 | `spy-default-denied` | `*68*1101` + patch `spy_pass=3333` | No Authenticate / ChanSpy (fail-closed) |
 | `spy-ok` | `*68*1101` + patch `spy_pass=9911` | Authenticate then ChanSpy |
+| `spy-cross-tenant-denied` | `*68*1000` from testtn01; 1000 only on testtn02 | Authenticate then `pbx-invalid`; no ChanSpy |
 
 Optional per-scenario: **`variables.json`** (GET VARIABLE replies), **`env.json`** (process env), **`seed_patch.sql`**.
 

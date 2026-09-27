@@ -187,7 +187,6 @@ static const agi_cmd_entry_t agi_cmd_table[] = {
     { 64, NULL, AgentUnpause },
     { 65, NULL, AgentLogin },
     { 66, NULL, AgentLogout },
-    /* ChanSpy*: still need MultiTenant work */
     { 67, NULL, ChanSpyWhisper },
     { 68, NULL, ChanSpy },
 };
@@ -861,6 +860,8 @@ void AgentUnpause(agi_session_t *s)
 }
 
 // ChanSpy targets PJSIP/{shortuid} — channel names are never PJSIP/{pkey}.
+// Resolve only within the calling tenant (PARM_CLST). No cross-cluster pkey
+// fallback — that leaked spy onto other tenants sharing an extension number.
 static int chanspy_resolve_endpoint(agi_session_t *s, const char *dialed_pkey,
                                    char *endpoint, size_t endpoint_sz)
 {
@@ -878,12 +879,8 @@ static int chanspy_resolve_endpoint(agi_session_t *s, const char *dialed_pkey,
                   dialed_pkey, s->call->myCluster);
     suid = rescols[0];
     if (suid == NULL || suid[0] == '\0') {
-        /* Fall back: cluster may still store pkey/KSUID alias on some rows. */
-        sqlQueryBind1("SELECT shortuid FROM ipphone WHERE pkey=?", dialed_pkey);
-        suid = rescols[0];
-    }
-    if (suid == NULL || suid[0] == '\0') {
-        snprintf(vmsg, sizeof(vmsg), "ChanSpy: no shortuid for pkey=%s cluster=%s",
+        snprintf(vmsg, sizeof(vmsg),
+                 "ChanSpy: pkey=%s not in cluster=%s (deny cross-tenant)",
                  dialed_pkey, s->call->myCluster);
         DebugFunctionMsg(__FUNCTION__, vmsg);
         return -1;

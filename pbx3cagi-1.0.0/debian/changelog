@@ -1,3 +1,10 @@
+pbx3cagi (1.0.0-22) stable; urgency=medium
+
+  * ChanSpy/Whisper: resolve target pkey only within the calling tenant —
+    drop cross-cluster pkey fallback (same extension on another tenant).
+
+ -- Aelintra Telecom Limited <support@aelintra.com>  Sat, 26 Sep 2026 20:30:00 -0400
+
 pbx3cagi (1.0.0-21) stable; urgency=medium
 
   * Agent login/out/pause: AddQueueMember uses queue shortuid (GenAst name),
