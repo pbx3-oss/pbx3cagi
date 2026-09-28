@@ -1,0 +1,9 @@
+# Day-1 Dependabot: security-oriented version updates for common ecosystems.
+# Alerts + automated security updates are also enabled at the repo settings level.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
