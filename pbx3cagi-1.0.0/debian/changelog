@@ -1,3 +1,10 @@
+pbx3cagi (1.0.0-23) stable; urgency=medium
+
+  * Package both amd64 and arm64 AGI binaries again (Architecture: all).
+    Built on lab amd64 (.213) + arm64 (.148); same tip as 1.0.0-22 sources.
+
+ -- Aelintra Telecom Limited <support@aelintra.com>  Mon, 28 Sep 2026 16:50:00 -0400
+
 pbx3cagi (1.0.0-22) stable; urgency=medium
 
   * ChanSpy/Whisper: resolve target pkey only within the calling tenant —
