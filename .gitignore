@@ -43,3 +43,7 @@ pbx3cagi-1.0.0/tests/fixtures/astdb/*.sqlite3
 # OS files
 .DS_Store
 Thumbs.db
+
+# dpkg-buildpackage side logs
+*.build
+pbx3cagi-1.0.0/debian/*.substvars
