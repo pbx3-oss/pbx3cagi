@@ -181,7 +181,7 @@ See `REWRITE_ANALYSIS.md` for detailed pros/cons and language recommendations.
 ## Files Modified (2026-02-09)
 
 - `pbx3cagi.h`: Fixed SQLite DB path (`/opt/gcs/` → `/opt/pbx3/`)
-- `pbx3cagi.c`: Fixed legacy `/opt/sark/` paths → `/opt/pbx3/`
+- `pbx3cagi.c`: Fixed legacy `/opt/<legacy-pbx>/` paths → `/opt/pbx3/`
 - `compile`: Updated to use `pbx3cagi.c` instead of `sarkhpe.c`
 
 ---

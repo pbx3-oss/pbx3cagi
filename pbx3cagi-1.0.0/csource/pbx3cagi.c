@@ -1423,7 +1423,7 @@ void PrefixDial(agi_session_t *s)
 
     /*
      * Network return AoR (§3.9) on the *outbound* PJSIP channel via Dial b()
-     * (setting PJSIP_HEADER on Local never sticks). Magrathea keeps this PAI
+     * (setting PJSIP_HEADER on Local never sticks). The SBC keeps this PAI
      * and rewrites From → sitedial for home identify. Presentation num is
      * routing_prefix+ext when Site Group mesh is present (else bare pkey).
      */
@@ -1539,7 +1539,7 @@ void OutVoip(agi_session_t *s, char *key)
 
     // CLIP
     // rename these trunks to intersite
-        // if this is a sx to sx trunk (called InterSARK) then leave the clip as the extension number even if there
+        // if this is a sx to sx trunk (legacy sister-site trunk tech InterSARK) then leave the clip as the extension number even if there
         // are overrides.  This caters for inter site calls where the caller wants to send their extension number even
         // though they normally send a DDI on an outbound call.
         if (strcmp(technology, "SailToSail") && strcmp(technology, "InterSARK"))
@@ -1895,7 +1895,7 @@ void PrepDial(agi_session_t *s, char *number, char *type, char *twin, char *vmbo
  *  overwritten by CALLERID presentation (extension digits).
  *
  *  Slice B hairpin guard: SbcDomainRoute sets __PBX3_SITE_DIAL=YES on digit
- *  R-URI arrivals (usrloc miss → dispatcher → home). Magrathea already proved
+ *  R-URI arrivals (usrloc miss → dispatcher → home). Lab already proved
  *  no Contact — do NOT Dial sip:user@tenant.fqdn again (loops). Local
  *  Dial(PJSIP/shortuid) → CHANUNAVAIL → PostDial → voicemail/CFBS.
  *  Carrier DID Ingress does not set SITE_DIAL; first FQDN Dial still runs.
