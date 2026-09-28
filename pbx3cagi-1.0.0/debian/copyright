@@ -1,6 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: pbx3cagi
-Source: https://github.com/aelintra/pbx3cagi
+Source: https://github.com/pbx3-oss/pbx3cagi
 Upstream-Contact: Aelintra Telecom Limited
 
 Files: *
