@@ -15,13 +15,37 @@ PBX3 AGI scripts and utilities.
 ```bash
 cd pbx3cagi-1.0.0/csource && make clean && make
 ```
-**Do not** install or scp a Mac-built `pbx3cagi` onto golden/lab instances (Mach-O, wrong path). AGI on fleet runs **Linux aarch64** at `/usr/share/asterisk/agi-bin/pbx3cagi` → `pbx3cagi.arm64`. Build for package/deploy on the target (or a Linux aarch64 builder with `libbsd-dev`) — **golden has the tools**.
+**Do not** install or scp a Mac-built `pbx3cagi` onto golden/lab instances (Mach-O, wrong path). AGI on fleet runs **Linux aarch64** at `/usr/share/asterisk/agi-bin/pbx3cagi` → `pbx3cagi.arm64`. Build for package/deploy on a Linux builder with `libbsd-dev` (see Packaging).
 
-**Linux (Debian/Ubuntu / golden):** Install libbsd dev, then build:
+**Linux (Debian/Ubuntu):** Install libbsd dev, then build:
 ```bash
 sudo apt-get install libbsd-dev
 cd pbx3cagi-1.0.0/csource && make clean && make
 # install (example):
 #   sudo cp -a pbx3cagi /usr/share/asterisk/agi-bin/pbx3cagi.arm64
 ```
-*Linux builder images and CI should have `libbsd-dev` (or distro equivalent) so that a tree that compiles on macOS also compiles on Linux.*
+
+## Packaging (locked 2026-09-28)
+
+Sailhpe-style **`Architecture: all`** `.deb`: native binaries are compiled **outside** `debuild`, staged, then copied in. No Docker.
+
+| Step | Where | Command / note |
+|------|--------|----------------|
+| amd64 binary | Lab **`tech@192.168.1.213`** (`~/git/pbx3cagi`, tip of `pbx3-oss/pbx3cagi`) | `cd pbx3cagi-1.0.0/csource && make clean all` → `pbx3cagi` (ELF x86-64) |
+| arm64 binary | Lab **`tech@192.168.1.148`** or cloud **golden** (aarch64) | same `make`; need `libbsd-dev` + `build-essential` |
+| Assemble deb | Linux with `debuild` (`.148` / golden; **not** ancient Debian 9 on `.213`) | `PBX3CAGI_AMD64=… PBX3CAGI_ARM64=… ./scripts/build-deb.sh` |
+| Scripts | repo root | `scripts/seed-deb-binaries.sh` · `scripts/build-deb.sh` |
+
+Bump `pbx3cagi-1.0.0/debian/changelog` **before** `debuild`. Package lands as `pbx3cagi_<ver>_all.deb` (contains `pbx3cagi.arm64` **and** preferably `pbx3cagi.amd64`). Postinst symlinks `pbx3cagi` → `pbx3cagi.$(dpkg --print-architecture)`.
+
+### Release artefacts in git (regress window)
+
+`*.deb` is **gitignored**. Force-add the current release so installs can pull from `main`.
+
+**Keep the last three** release debs tracked (current + two prior) for easy regress. On each new release:
+
+1. `git add -f pbx3cagi_<new>_all.deb`
+2. `git rm --cached pbx3cagi_<oldest-of-the-three>_all.deb` (leave file on disk if you want)
+3. Commit changelog + deb add/rm together
+
+Do **not** accumulate the full history in git. Older local copies may remain untracked on the Mac.

@@ -3,7 +3,10 @@
 #
 # Usage (from repo root, on Linux with debuild):
 #   PBX3CAGI_AMD64=... PBX3CAGI_ARM64=... ./scripts/build-deb.sh
-#   ./scripts/build-deb.sh --build-local   # arm64 on golden; amd64 optional later
+#   ./scripts/build-deb.sh --build-local   # native arch only (arm64 on golden/.148)
+#
+# Dual-arch lab: amd64 on tech@192.168.1.213; arm64 on tech@192.168.1.148 (or golden).
+# After build: force-add the new .deb; keep last THREE release debs in git (see README § Packaging).
 #
 set -euo pipefail
 

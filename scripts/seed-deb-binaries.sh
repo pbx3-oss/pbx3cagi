@@ -5,7 +5,10 @@
 # Usage (from repo root):
 #   ./scripts/seed-deb-binaries.sh --build-local
 #   PBX3CAGI_ARM64=/path/pbx3cagi ./scripts/seed-deb-binaries.sh
-#   PBX3CAGI_AMD64=/path/pbx3cagi ./scripts/seed-deb-binaries.sh   # optional
+#   PBX3CAGI_AMD64=/path/pbx3cagi ./scripts/seed-deb-binaries.sh   # optional but preferred
+#
+# Lab builders: amd64 tech@192.168.1.213 · arm64 tech@192.168.1.148 (or golden).
+# Git: keep last three release .debs force-added — see README § Packaging.
 #
 set -euo pipefail
 
