@@ -628,10 +628,10 @@ static int agent_resolve_queue_name(agi_session_t *s, const char *queue_pkey,
     return 0;
 }
 
-/* Static queue members use Local/Q{ext}@tenant (PrepDial queue path). */
+/* Queue members: Local/Q{ext}@tenant/n (PrepDial path; /n keeps Local for park/xfer). */
 static void agent_member_local(char *buf, size_t bufsz, const char *ext, const char *context)
 {
-    snprintf(buf, bufsz, "Local/Q%s@%s", ext, context);
+    snprintf(buf, bufsz, "Local/Q%s@%s/n", ext, context);
 }
 
 void AgentLogin(agi_session_t *s)
@@ -649,7 +649,7 @@ void AgentLogin(agi_session_t *s)
     char queue_pkey[32] = {'\0'};          // agent.queueN value (queue pkey)
     char queuename[32] = {'\0'};           // Asterisk queue name (shortuid)
     char extenAgent[MAX_EXT_LEN] = {'\0'}; // holds exten if an agent is already logged in
-    char agentchan[64] = {'\0'};           // Local/Q{ext}@{tenant}
+    char agentchan[64] = {'\0'};           // Local/Q{ext}@{tenant}/n
     char remove_chan[64] = {'\0'};
     char remove_ext[MAX_EXT_LEN] = {'\0'};
     char buffer[1024] = {'\0'};            // QLOG buffer
@@ -764,7 +764,7 @@ void AgentLogout(agi_session_t *s)
     char agentqueue[32] = {'\0'}; // used to construct the queue column
     char queue_pkey[32] = {'\0'};
     char queuename[32] = {'\0'};  // Asterisk queue name (shortuid)
-    char agentchan[64] = {'\0'};  // Local/Q{ext}@{tenant}
+    char agentchan[64] = {'\0'};  // Local/Q{ext}@{tenant}/n
     char buffer[1024] = {'\0'};   // QLOG buffer
     char epoch[32] = {'\0'};      // ${EPOCH}
     char startepoch[32] = {'\0'}; // ${EPOCH} saved from login
@@ -825,6 +825,7 @@ void AgentPause(agi_session_t *s)
     DebugFunctionTrace(__FUNCTION__);
 
     char agent[8] = {'\0'};      // agent number
+    char member[64] = {'\0'};
     char queuearg[256] = {'\0'}; // argument
     char f_eAgent[64] = {'\0'};
 
@@ -833,7 +834,8 @@ void AgentPause(agi_session_t *s)
 
     if (strcmp(agent, ""))
     {
-        snprintf(queuearg, sizeof(queuearg), ",Local/Q%s@%s", s->call->callerid, s->call->myClusterContext);
+        agent_member_local(member, sizeof(member), s->call->callerid, s->call->myClusterContext);
+        snprintf(queuearg, sizeof(queuearg), ",%s", member);
         agi_exec(s, "PauseQueueMember", queuearg);
     }
     agi_exec(s, "Playback", "beep");
@@ -845,6 +847,7 @@ void AgentUnpause(agi_session_t *s)
     DebugFunctionTrace(__FUNCTION__);
 
     char agent[8] = {'\0'};      // agent number
+    char member[64] = {'\0'};
     char queuearg[256] = {'\0'}; // argument
     char f_eAgent[64] = {'\0'};
 
@@ -853,7 +856,8 @@ void AgentUnpause(agi_session_t *s)
 
     if (strcmp(agent, ""))
     {
-        snprintf(queuearg, sizeof(queuearg), ",Local/Q%s@%s", s->call->callerid, s->call->myClusterContext);
+        agent_member_local(member, sizeof(member), s->call->callerid, s->call->myClusterContext);
+        snprintf(queuearg, sizeof(queuearg), ",%s", member);
         agi_exec(s, "UnPauseQueueMember", queuearg);
     }
     agi_exec(s, "Playback", "beep");
@@ -2004,11 +2008,14 @@ void PrepDial(agi_session_t *s, char *number, char *type, char *twin, char *vmbo
     }
     else
 /**
- *      This is a queue dial
+ *      Queue dial — empty timeout (Queue owns ring time) but keep ktT so the
+ *      agent leg can park (*5 / featuremap) and transfer after answer. Pair with
+ *      GenAst member=Local/…/n so Local is not optimized out of the Queue bridge.
  */
     {
         strlcat(dialString, ASTDLIM, sizeof(dialString));
         strlcat(dialString, ASTDLIM, sizeof(dialString));
+        strlcat(dialString, "ktT", sizeof(dialString));
     }
 
 /**
