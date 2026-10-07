@@ -1,3 +1,9 @@
+pbx3cagi (1.0.0-24) stable; urgency=medium
+
+  * Queue PrepDial: Dial options ktT → cktT (answered-elsewhere on cancel).
+
+ -- Aelintra Telecom Limited <support@aelintra.com>  Wed, 07 Oct 2026 10:00:00 -0400
+
 pbx3cagi (1.0.0-23) stable; urgency=medium
 
   * Package both amd64 and arm64 AGI binaries again (Architecture: all).

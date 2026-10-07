@@ -2008,14 +2008,16 @@ void PrepDial(agi_session_t *s, char *number, char *type, char *twin, char *vmbo
     }
     else
 /**
- *      Queue dial — empty timeout (Queue owns ring time) but keep ktT so the
- *      agent leg can park (*5 / featuremap) and transfer after answer. Pair with
- *      GenAst member=Local/…/n so Local is not optimized out of the Queue bridge.
+ *      Queue dial — empty timeout (Queue owns ring time) but keep cktT so the
+ *      agent leg can park (*5 / featuremap) and transfer after answer; Dial c
+ *      sets HANGUPCAUSE answered-elsewhere when Queue cancels the ring.
+ *      Pair with GenAst member=Local/…/n so Local is not optimized out of the
+ *      Queue bridge.
  */
     {
         strlcat(dialString, ASTDLIM, sizeof(dialString));
         strlcat(dialString, ASTDLIM, sizeof(dialString));
-        strlcat(dialString, "ktT", sizeof(dialString));
+        strlcat(dialString, "cktT", sizeof(dialString));
     }
 
 /**
