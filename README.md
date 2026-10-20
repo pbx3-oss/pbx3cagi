@@ -32,9 +32,11 @@ Sailhpe-style **`Architecture: all`** `.deb`: native binaries are compiled **out
 | Step | Where | Command / note |
 |------|--------|----------------|
 | amd64 binary | Lab **`tech@192.168.1.213`** (`~/git/pbx3cagi`, tip of `pbx3-oss/pbx3cagi`) | `cd pbx3cagi-1.0.0/csource && make clean all` → `pbx3cagi` (ELF x86-64) |
-| arm64 binary | Lab **`tech@192.168.1.148`** or cloud **golden** (aarch64) | same `make`; need `libbsd-dev` + `build-essential` |
-| Assemble deb | Linux with `debuild` (`.148` / golden; **not** ancient Debian 9 on `.213`) | `PBX3CAGI_AMD64=… PBX3CAGI_ARM64=… ./scripts/build-deb.sh` |
+| arm64 binary | Lab **`tech@192.168.1.78`** (local Mac VM, aarch64; `libbsd-dev`) | same `make`; need `libbsd-dev` + `build-essential` |
+| Assemble deb | Linux with `debuild` (**.78** or cloud **golden**; **not** ancient Debian 9 on `.213`) | `PBX3CAGI_AMD64=… PBX3CAGI_ARM64=… ./scripts/build-deb.sh` |
 | Scripts | repo root | `scripts/seed-deb-binaries.sh` · `scripts/build-deb.sh` |
+
+**Compiler hosts (locked 2026-10-20):** **`.213` = amd64**, **`.78` = arm64**. Mac host key → `tech@192.168.1.78` `authorized_keys` (BatchMode). Golden remains a fallback arm64/`debuild` host if the lab VM is down.
 
 Bump `pbx3cagi-1.0.0/debian/changelog` **before** `debuild`. Package lands as `pbx3cagi_<ver>_all.deb` (contains `pbx3cagi.arm64` **and** preferably `pbx3cagi.amd64`). Postinst symlinks `pbx3cagi` → `pbx3cagi.$(dpkg --print-architecture)`.
 

@@ -7,8 +7,8 @@
 #   PBX3CAGI_ARM64=/path/pbx3cagi ./scripts/seed-deb-binaries.sh
 #   PBX3CAGI_AMD64=/path/pbx3cagi ./scripts/seed-deb-binaries.sh   # optional but preferred
 #
-# Lab builders: amd64 tech@192.168.1.213 · arm64 tech@192.168.1.148 (or golden).
-# Git: keep last three release .debs force-added — see README § Packaging.
+# Lab builders (locked): amd64 tech@192.168.1.213 · arm64 tech@192.168.1.78
+# (golden = arm64/debuild fallback). Git: keep last three release .debs — README § Packaging.
 #
 set -euo pipefail
 
