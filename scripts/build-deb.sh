@@ -5,8 +5,8 @@
 #   PBX3CAGI_AMD64=... PBX3CAGI_ARM64=... ./scripts/build-deb.sh
 #   ./scripts/build-deb.sh --build-local   # native arch only (arm64 on golden/.148)
 #
-# Dual-arch lab: amd64 on tech@192.168.1.213; arm64 on tech@192.168.1.148 (or golden).
-# After build: force-add the new .deb; keep last THREE release debs in git (see README § Packaging).
+# Dual-arch lab (locked): amd64 tech@192.168.1.213; arm64 tech@192.168.1.78
+# (assemble on .78 or golden — not Debian 9 on .213). Keep last THREE release debs in git.
 #
 set -euo pipefail
 

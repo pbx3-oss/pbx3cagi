@@ -1,8 +1,10 @@
 pbx3cagi (1.0.0-24) stable; urgency=medium
 
-  * Queue PrepDial: Dial options ktT → cktT (answered-elsewhere on cancel).
+  * Queue PrepDial: member Dial options include park/transfer (ktT) then c
+    (cktT) for answered-elsewhere on Queue cancel / missed-call hygiene.
+  * Dual-arch AGI (amd64 + arm64) in Architecture: all deb.
 
- -- Aelintra Telecom Limited <support@aelintra.com>  Wed, 07 Oct 2026 10:00:00 -0400
+ -- Aelintra Telecom Limited <support@aelintra.com>  Tue, 20 Oct 2026 14:30:00 -0400
 
 pbx3cagi (1.0.0-23) stable; urgency=medium
 
