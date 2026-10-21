@@ -1,3 +1,13 @@
+pbx3cagi (1.0.0-25) stable; urgency=medium
+
+  * Call concurrency: enforce tenant+instance maxin/maxout via matched
+    GROUP/GROUP_COUNT (shortuid-keyed); drop voip_max/chanmax product path
+    (chanmax fallback if maxout empty); Busy + PBX3_CONCUR_LIMIT log on hit.
+  * Offline scenarios: concur-maxin-tenant-busy, concur-maxin-instance-busy,
+    concur-maxout-tenant-busy.
+
+ -- Aelintra Telecom Limited <support@aelintra.com>  Wed, 21 Oct 2026 14:30:00 -0400
+
 pbx3cagi (1.0.0-24) stable; urgency=medium
 
   * Queue PrepDial: member Dial options include park/transfer (ktT) then c

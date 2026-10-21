@@ -9,7 +9,9 @@ CREATE TABLE IF NOT EXISTS globals (
     "pkey" TEXT UNIQUE,
     "sitename" TEXT,
     "fqdn" TEXT,
-    "domain" TEXT
+    "domain" TEXT,
+    "maxin" INTEGER,
+    "maxout" INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS cluster (
@@ -28,6 +30,7 @@ CREATE TABLE IF NOT EXISTS cluster (
     "blind_busy" TEXT DEFAULT '',
     "int_ring_delay" INTEGER DEFAULT 20,
     "maxin" INTEGER DEFAULT 30,
+    "maxout" INTEGER DEFAULT 30,
     "ringdelay" INTEGER DEFAULT 0,
     "lterm" INTEGER DEFAULT 0,
     "cfwd_progress" TEXT DEFAULT 'enabled',
@@ -54,7 +57,14 @@ CREATE TABLE IF NOT EXISTS cluster (
 
 CREATE TABLE IF NOT EXISTS trunks (
     "pkey" TEXT PRIMARY KEY,
-    "active" TEXT DEFAULT 'YES'
+    "active" TEXT DEFAULT 'YES',
+    "username" TEXT DEFAULT '',
+    "peername" TEXT DEFAULT '',
+    "callprogress" TEXT DEFAULT 'NO',
+    "description" TEXT DEFAULT '',
+    "transform" TEXT DEFAULT '',
+    "match" TEXT DEFAULT '',
+    "technology" TEXT DEFAULT 'SIP'
 );
 
 CREATE TABLE IF NOT EXISTS dialalias (
@@ -147,15 +157,15 @@ DELETE FROM trunks;
 DELETE FROM cluster;
 DELETE FROM globals;
 
-INSERT INTO globals (id, shortuid, pkey, sitename, fqdn, domain) VALUES
-    ('fix00000000000000000000001', 'testgl01', 'global', 'Demo Test PBX', 'test.pbx3.local', 'pbx3.local');
+INSERT INTO globals (id, shortuid, pkey, sitename, fqdn, domain, maxin, maxout) VALUES
+    ('test00000000000000000000001', 'testgl01', 'global', 'Demo Test PBX', 'test.pbx3.local', 'pbx3.local', NULL, NULL);
 
 INSERT INTO cluster (
     id, shortuid, pkey, cname, fqdn, domain, play_transfer, voice_instr, callrecord_1, usemohcustom,
-    oclo, sched_mode, ringdelay, routeoverride, holiday_force_dest
+    oclo, sched_mode, ringdelay, routeoverride, holiday_force_dest, maxin, maxout, chanmax
 ) VALUES (
-    'fix00000000000000000000002', 'testtn01', 'tenant01', 'Tenant 01', 'testtn01.pbx3.local', 'testtn01.pbx3.local',
-    1, 1, 'None', 'NO', 'OPEN', 'open', 0, '', ''
+    'test00000000000000000000002', 'testtn01', 'tenant01', 'Tenant 01', 'testtn01.pbx3.local', 'testtn01.pbx3.local',
+    1, 1, 'None', 'NO', 'OPEN', 'open', 0, '', '', NULL, NULL, NULL
 );
 
 INSERT INTO dialalias (id, shortuid, pkey, active, cluster, target_fqdn, cname, description) VALUES

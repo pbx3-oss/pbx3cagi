@@ -22,11 +22,30 @@ extern long debug;
 char rescols[MAX_SQL_COLS][MAX_SQL_CLEN];
 
 cluster_cfg_t g_cluster_cfg;
+instance_concur_cfg_t g_instance_concur;
+
+/* Positive N → decimal string; NULL / ≤0 → empty (unlimited / unused). */
+static void limit_str_from_col(sqlite3_stmt *stmt, int col, char *out, size_t outlen)
+{
+    int v;
+
+    out[0] = '\0';
+    if (sqlite3_column_type(stmt, col) == SQLITE_NULL)
+    {
+        return;
+    }
+    v = sqlite3_column_int(stmt, col);
+    if (v > 0)
+    {
+        snprintf(out, outlen, "%d", v);
+    }
+}
+
 static void cluster_cfg_apply_defaults(cluster_cfg_t *cfg)
 {
     memset(cfg, 0, sizeof(*cfg));
     cfg->abstimeout_sec = 14400;
-    strlcpy(cfg->voipmax_str, "30", sizeof(cfg->voipmax_str));
+    cfg->voipmax_str[0] = '\0';
     strlcpy(cfg->callrecord_1, "None", sizeof(cfg->callrecord_1));
     strlcpy(cfg->allowhashxfer, "enabled", sizeof(cfg->allowhashxfer));
     strlcpy(cfg->playbeep, "YES", sizeof(cfg->playbeep));
@@ -35,7 +54,8 @@ static void cluster_cfg_apply_defaults(cluster_cfg_t *cfg)
     strlcpy(cfg->playtransfer, "YES", sizeof(cfg->playtransfer));
     strlcpy(cfg->voiceinstr, "YES", sizeof(cfg->voiceinstr));
     strlcpy(cfg->int_ring_delay, "20", sizeof(cfg->int_ring_delay));
-    strlcpy(cfg->maxin_str, "30", sizeof(cfg->maxin_str));
+    cfg->maxin_str[0] = '\0';
+    cfg->maxout_str[0] = '\0';
     strlcpy(cfg->ringdelay_str, "20", sizeof(cfg->ringdelay_str));
     strlcpy(cfg->lterm_str, "NO", sizeof(cfg->lterm_str));
     strlcpy(cfg->cfwd_progress, "enabled", sizeof(cfg->cfwd_progress));
@@ -44,13 +64,19 @@ static void cluster_cfg_apply_defaults(cluster_cfg_t *cfg)
     strlcpy(cfg->ivr_digit_wait_str, "6000", sizeof(cfg->ivr_digit_wait_str));
     strlcpy(cfg->syspass, "", sizeof(cfg->syspass));
     strlcpy(cfg->spy_pass, "", sizeof(cfg->spy_pass));
-    strlcpy(cfg->chanmax_str, "3", sizeof(cfg->chanmax_str));
+    cfg->chanmax_str[0] = '\0';
     strlcpy(cfg->usemohcustom, "NO", sizeof(cfg->usemohcustom));
     strlcpy(cfg->masteroclo, "AUTO", sizeof(cfg->masteroclo));
     cfg->oclo[0] = '\0';
     cfg->routeoverride[0] = '\0';
     cfg->sched_mode[0] = '\0';
     cfg->holiday_force_dest[0] = '\0';
+    cfg->shortuid[0] = '\0';
+}
+
+static void instance_concur_apply_defaults(instance_concur_cfg_t *cfg)
+{
+    memset(cfg, 0, sizeof(*cfg));
 }
 
 static sqlite3 *g_sqlite_handle = NULL;
@@ -145,7 +171,8 @@ int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg)
     snprintf(
         query, sizeof(query),
         "SELECT abstimeout, voip_max, allow_hash_xfer, play_beep, play_busy, play_congested, "
-        "play_transfer, voice_instr, bounce_alert, blind_busy, int_ring_delay, maxin, ringdelay, lterm, "
+        "play_transfer, voice_instr, bounce_alert, blind_busy, int_ring_delay, maxin, maxout, "
+        "ringdelay, lterm, "
         "cfwd_progress, cfwd_answer, ivr_key_wait, ivr_digit_wait, syspass, spy_pass, dynamicfeatures, "
         "clusterclid, chanmax, usemohcustom, callrecord_1, masteroclo, oclo, routeoverride, "
         "sched_mode, holiday_force_dest, "
@@ -194,10 +221,8 @@ int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg)
     }
 
     cfg->abstimeout_sec = sqlite3_column_type(stmt, 0) == SQLITE_NULL ? 14400 : sqlite3_column_int(stmt, 0);
-    {
-        int vm = sqlite3_column_type(stmt, 1) == SQLITE_NULL ? 30 : sqlite3_column_int(stmt, 1);
-        snprintf(cfg->voipmax_str, sizeof(cfg->voipmax_str), "%d", vm);
-    }
+    /* voip_max kept in SELECT for column stability; not used for concurrency. */
+    cfg->voipmax_str[0] = '\0';
     {
         const unsigned char *t = sqlite3_column_text(stmt, 2);
         strlcpy(cfg->allowhashxfer, t ? (const char *)t : "enabled", sizeof(cfg->allowhashxfer));
@@ -234,89 +259,91 @@ int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg)
         int v = sqlite3_column_type(stmt, 10) == SQLITE_NULL ? 20 : sqlite3_column_int(stmt, 10);
         snprintf(cfg->int_ring_delay, sizeof(cfg->int_ring_delay), "%d", v);
     }
+    /* 11 maxin, 12 maxout — 0/NULL = unlimited */
+    limit_str_from_col(stmt, 11, cfg->maxin_str, sizeof(cfg->maxin_str));
+    limit_str_from_col(stmt, 12, cfg->maxout_str, sizeof(cfg->maxout_str));
     {
-        int v = sqlite3_column_type(stmt, 11) == SQLITE_NULL ? 30 : sqlite3_column_int(stmt, 11);
-        snprintf(cfg->maxin_str, sizeof(cfg->maxin_str), "%d", v);
-    }
-    {
-        int v = sqlite3_column_type(stmt, 12) == SQLITE_NULL ? 20 : sqlite3_column_int(stmt, 12);
+        int v = sqlite3_column_type(stmt, 13) == SQLITE_NULL ? 20 : sqlite3_column_int(stmt, 13);
         snprintf(cfg->ringdelay_str, sizeof(cfg->ringdelay_str), "%d", v);
     }
     {
-        int lt = sqlite3_column_type(stmt, 13) == SQLITE_NULL ? 0 : sqlite3_column_int(stmt, 13);
+        int lt = sqlite3_column_type(stmt, 14) == SQLITE_NULL ? 0 : sqlite3_column_int(stmt, 14);
         strlcpy(cfg->lterm_str, lt ? "YES" : "NO", sizeof(cfg->lterm_str));
     }
     {
-        const unsigned char *t = sqlite3_column_text(stmt, 14);
+        const unsigned char *t = sqlite3_column_text(stmt, 15);
         strlcpy(cfg->cfwd_progress, t ? (const char *)t : "enabled", sizeof(cfg->cfwd_progress));
     }
     {
-        const unsigned char *t = sqlite3_column_text(stmt, 15);
+        const unsigned char *t = sqlite3_column_text(stmt, 16);
         strlcpy(cfg->cfwd_answer, t ? (const char *)t : "enabled", sizeof(cfg->cfwd_answer));
     }
     {
-        int v = sqlite3_column_type(stmt, 16) == SQLITE_NULL ? 6 : sqlite3_column_int(stmt, 16);
+        int v = sqlite3_column_type(stmt, 17) == SQLITE_NULL ? 6 : sqlite3_column_int(stmt, 17);
         snprintf(cfg->ivr_key_wait, sizeof(cfg->ivr_key_wait), "%d", v);
     }
     {
-        int v = sqlite3_column_type(stmt, 17) == SQLITE_NULL ? 6000 : sqlite3_column_int(stmt, 17);
+        int v = sqlite3_column_type(stmt, 18) == SQLITE_NULL ? 6000 : sqlite3_column_int(stmt, 18);
         snprintf(cfg->ivr_digit_wait_str, sizeof(cfg->ivr_digit_wait_str), "%d", v);
     }
     {
-        const unsigned char *t = sqlite3_column_text(stmt, 18);
+        const unsigned char *t = sqlite3_column_text(stmt, 19);
         strlcpy(cfg->syspass, t ? (const char *)t : "", sizeof(cfg->syspass));
     }
     {
-        const unsigned char *t = sqlite3_column_text(stmt, 19);
+        const unsigned char *t = sqlite3_column_text(stmt, 20);
         strlcpy(cfg->spy_pass, t ? (const char *)t : "", sizeof(cfg->spy_pass));
     }
     {
-        const unsigned char *t = sqlite3_column_text(stmt, 20);
+        const unsigned char *t = sqlite3_column_text(stmt, 21);
         strlcpy(cfg->dynamicfeatures, t ? (const char *)t : "", sizeof(cfg->dynamicfeatures));
     }
     {
-        const unsigned char *t = sqlite3_column_text(stmt, 21);
+        const unsigned char *t = sqlite3_column_text(stmt, 22);
         strlcpy(cfg->clusterclid, t ? (const char *)t : "", sizeof(cfg->clusterclid));
     }
+    /* chanmax: positive only (maxout fallback); NULL/0 → empty */
+    limit_str_from_col(stmt, 23, cfg->chanmax_str, sizeof(cfg->chanmax_str));
     {
-        int v = sqlite3_column_type(stmt, 22) == SQLITE_NULL ? 3 : sqlite3_column_int(stmt, 22);
-        snprintf(cfg->chanmax_str, sizeof(cfg->chanmax_str), "%d", v);
-    }
-    {
-        const unsigned char *t = sqlite3_column_text(stmt, 23);
+        const unsigned char *t = sqlite3_column_text(stmt, 24);
         strlcpy(cfg->usemohcustom, t ? (const char *)t : "NO", sizeof(cfg->usemohcustom));
     }
     {
-        const unsigned char *t = sqlite3_column_text(stmt, 24);
+        const unsigned char *t = sqlite3_column_text(stmt, 25);
         strlcpy(cfg->callrecord_1, t ? (const char *)t : "None", sizeof(cfg->callrecord_1));
     }
     {
-        const unsigned char *t = sqlite3_column_text(stmt, 25);
+        const unsigned char *t = sqlite3_column_text(stmt, 26);
         strlcpy(cfg->masteroclo, t ? (const char *)t : "AUTO", sizeof(cfg->masteroclo));
     }
     {
-        const unsigned char *t = sqlite3_column_text(stmt, 26);
+        const unsigned char *t = sqlite3_column_text(stmt, 27);
         strlcpy(cfg->oclo, t ? (const char *)t : "", sizeof(cfg->oclo));
     }
     {
-        const unsigned char *t = sqlite3_column_text(stmt, 27);
+        const unsigned char *t = sqlite3_column_text(stmt, 28);
         strlcpy(cfg->routeoverride, t ? (const char *)t : "", sizeof(cfg->routeoverride));
     }
     {
-        const unsigned char *t = sqlite3_column_text(stmt, 28);
+        const unsigned char *t = sqlite3_column_text(stmt, 29);
         strlcpy(cfg->sched_mode, t ? (const char *)t : "", sizeof(cfg->sched_mode));
     }
     {
-        const unsigned char *t = sqlite3_column_text(stmt, 29);
+        const unsigned char *t = sqlite3_column_text(stmt, 30);
         strlcpy(cfg->holiday_force_dest, t ? (const char *)t : "", sizeof(cfg->holiday_force_dest));
     }
     {
         /* Prefer fqdn, then cname, else shortuid.domain (phones register as user@tenant.fqdn). */
-        const unsigned char *fq = sqlite3_column_text(stmt, 30);
-        const unsigned char *cn = sqlite3_column_text(stmt, 31);
-        const unsigned char *dom = sqlite3_column_text(stmt, 32);
-        const unsigned char *su = sqlite3_column_text(stmt, 33);
+        const unsigned char *fq = sqlite3_column_text(stmt, 31);
+        const unsigned char *cn = sqlite3_column_text(stmt, 32);
+        const unsigned char *dom = sqlite3_column_text(stmt, 33);
+        const unsigned char *su = sqlite3_column_text(stmt, 34);
         cfg->fqdn[0] = '\0';
+        cfg->shortuid[0] = '\0';
+        if (su != NULL && su[0] != '\0')
+        {
+            strlcpy(cfg->shortuid, (const char *)su, sizeof(cfg->shortuid));
+        }
         if (fq != NULL && fq[0] != '\0')
         {
             strlcpy(cfg->fqdn, (const char *)fq, sizeof(cfg->fqdn));
@@ -325,10 +352,73 @@ int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg)
         {
             strlcpy(cfg->fqdn, (const char *)cn, sizeof(cfg->fqdn));
         }
-        else if (su != NULL && su[0] != '\0' && dom != NULL && dom[0] != '\0')
+        else if (cfg->shortuid[0] != '\0' && dom != NULL && dom[0] != '\0')
         {
-            snprintf(cfg->fqdn, sizeof(cfg->fqdn), "%s.%s", (const char *)su, (const char *)dom);
+            snprintf(cfg->fqdn, sizeof(cfg->fqdn), "%s.%s", cfg->shortuid, (const char *)dom);
         }
+    }
+
+    cfg->loaded = 1;
+    sqlite3_finalize(stmt);
+    return 0;
+}
+
+int load_instance_concur_cfg(instance_concur_cfg_t *cfg)
+{
+    const char *query =
+        "SELECT maxin, maxout, shortuid FROM globals WHERE pkey='global' LIMIT 1";
+    sqlite3 *handle = NULL;
+    sqlite3_stmt *stmt = NULL;
+    int retval;
+    int i;
+
+    instance_concur_apply_defaults(cfg);
+
+    handle = sqlGetSharedHandle();
+    if (handle == NULL)
+    {
+        DebugFunctionMsg(__FUNCTION__, "load_instance_concur_cfg: sqlite open failed");
+        return -1;
+    }
+
+    for (i = 0; i < 3; i++)
+    {
+        retval = sqlite3_prepare_v2(handle, query, -1, &stmt, NULL);
+        if (retval == SQLITE_OK)
+        {
+            break;
+        }
+        if (retval == SQLITE_LOCKED || retval == SQLITE_BUSY)
+        {
+            AGITool_exec(&agi, &res, "Wait", "0.5");
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    if (retval != SQLITE_OK)
+    {
+        /* Older fixtures / missing columns: treat as unlimited. */
+        snprintf(vmsg, sizeof(vmsg), "load_instance_concur_cfg: prepare failed %i (unlimited)", retval);
+        DebugFunctionMsg(__FUNCTION__, vmsg);
+        return -1;
+    }
+
+    retval = sqlite3_step(stmt);
+    if (retval != SQLITE_ROW)
+    {
+        DebugFunctionMsg(__FUNCTION__, "load_instance_concur_cfg: no globals row");
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    limit_str_from_col(stmt, 0, cfg->maxin_str, sizeof(cfg->maxin_str));
+    limit_str_from_col(stmt, 1, cfg->maxout_str, sizeof(cfg->maxout_str));
+    {
+        const unsigned char *t = sqlite3_column_text(stmt, 2);
+        strlcpy(cfg->shortuid, t ? (const char *)t : "", sizeof(cfg->shortuid));
     }
 
     cfg->loaded = 1;

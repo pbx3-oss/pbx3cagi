@@ -1,0 +1,6 @@
+must SET VARIABLE GROUP(pbx3in)
+must GET VARIABLE GROUP_COUNT(home@pbx3in)
+must PBX3_CONCUR_LIMIT knob=maxin scope=instance
+must EXEC Busy
+must-not SET EXTENSION
+exit 0

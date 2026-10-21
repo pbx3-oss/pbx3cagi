@@ -9,6 +9,7 @@
 
 extern char rescols[MAX_SQL_COLS][MAX_SQL_CLEN];
 extern cluster_cfg_t g_cluster_cfg;
+extern instance_concur_cfg_t g_instance_concur;
 
 /* Prepared SELECT: sql has exactly one ? (bind1) or two ? in order (bind2).
  * Results land in rescols[]; return value is &rescols[0][0] (or "-1" on open fail).
@@ -17,5 +18,6 @@ char *sqlQueryBind1(const char *sql, const char *arg1);
 char *sqlQueryBind2(const char *sql, const char *arg1, const char *arg2);
 
 int load_cluster_cfg(const char *cluster_pkey, cluster_cfg_t *cfg);
+int load_instance_concur_cfg(instance_concur_cfg_t *cfg);
 
 #endif /* _AGI_SQLITE_H */
