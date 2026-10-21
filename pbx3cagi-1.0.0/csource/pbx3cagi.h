@@ -57,7 +57,7 @@ struct _asterisk_cmd_result_;
 typedef struct cluster_cfg {
     int loaded;
     int abstimeout_sec;
-    char voipmax_str[16];
+    char voipmax_str[16];          /* legacy; ignored for concurrency (see CALL_CONCURRENCY_LIMITS) */
     char callrecord_1[32];
     char allowhashxfer[32];
     char playbeep[8];
@@ -68,7 +68,8 @@ typedef struct cluster_cfg {
     char bounce_alert[256];
     char blind_busy[128];
     char int_ring_delay[16];
-    char maxin_str[16];
+    char maxin_str[16];            /* empty / "0" = unlimited */
+    char maxout_str[16];           /* empty / "0" = unlimited; falls back to chanmax if empty */
     char ringdelay_str[16];
     char lterm_str[8];
     char cfwd_progress[16];
@@ -79,7 +80,7 @@ typedef struct cluster_cfg {
     char spy_pass[64];
     char dynamicfeatures[512];
     char clusterclid[MAX_EXT_LEN];
-    char chanmax_str[16];
+    char chanmax_str[16];          /* legacy outbound ceiling; fallback only when maxout empty */
     char usemohcustom[8];
     char masteroclo[16];
     char oclo[16];
@@ -87,7 +88,16 @@ typedef struct cluster_cfg {
     char sched_mode[32];           /* day-parts timer mode (dual-read with oclo) */
     char holiday_force_dest[32];   /* optional redesign field; may mirror routeoverride */
     char fqdn[128]; /* tenant SIP domain (cluster.fqdn / cname) for RURI */
+    char shortuid[MAX_CLUSTER_LEN]; /* cluster.shortuid for GROUP keys + logs */
 } cluster_cfg_t;
+
+/* Instance globals concurrency caps (same SQLite as cluster; pkey=global). */
+typedef struct instance_concur_cfg {
+    int loaded;
+    char maxin_str[16];            /* empty / "0" = unlimited */
+    char maxout_str[16];
+    char shortuid[MAX_CLUSTER_LEN]; /* instance shortuid for logs */
+} instance_concur_cfg_t;
 
 /**
  * Phase 1.1 — call / AGI-arg context (still process-global storage).

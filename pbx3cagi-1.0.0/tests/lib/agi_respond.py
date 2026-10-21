@@ -22,6 +22,7 @@ from pathlib import Path
 
 DB_GET_RE = re.compile(r'^DATABASE GET "([^"]*)" "([^"]*)"\s*$')
 GET_VAR_RE = re.compile(r'^GET VARIABLE (\S+)\s*$')
+SET_VAR_RE = re.compile(r'^SET VARIABLE (\S+) "(.*)"\s*$')
 
 
 def load_json_map(path: Path) -> dict[str, str]:
@@ -72,7 +73,14 @@ def handle_command(line: str, astdb: dict[str, str], variables: dict[str, str]) 
         var = m.group(1)
         return agi_value_response(variables.get(var, ""))
 
-    # EXEC, SET CONTEXT / EXTENSION / PRIORITY / VARIABLE, WAIT FOR DIGIT, etc.
+    m = SET_VAR_RE.match(line)
+    if m:
+        # Persist channel vars so later GET VARIABLE sees what CAGI set
+        # (e.g. PBX3_CONCUR_REJECT / DIALSTATUS after a limit hit).
+        variables[m.group(1)] = m.group(2)
+        return "200 result=0\n"
+
+    # EXEC, SET CONTEXT / EXTENSION / PRIORITY, WAIT FOR DIGIT, etc.
     return "200 result=0\n"
 
 

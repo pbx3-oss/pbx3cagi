@@ -292,6 +292,7 @@ void agi_init_call_context(agi_session_t *s, int argc, char **argv)
     DebugFunctionMsg(__FUNCTION__, vmsg);
 
     load_cluster_cfg(ctx->myCluster, &g_cluster_cfg);
+    load_instance_concur_cfg(&g_instance_concur);
     abstimeint = g_cluster_cfg.abstimeout_sec;
 }
 
@@ -863,6 +864,118 @@ void AgentUnpause(agi_session_t *s)
     agi_exec(s, "Playback", "beep");
 }
 
+/*
+ * Call concurrency (CALL_CONCURRENCY_LIMITS_REQUIREMENTS.md).
+ * GROUP set/count must match: Set(GROUP(cat)=name) ↔ GROUP_COUNT(name@cat).
+ * Tenant categories pbx3tin/pbx3tout (name=shortuid); instance pbx3in/pbx3out (name=home).
+ * Returns 1 after Busy if over limit; 0 if OK (joined group when limit set).
+ */
+static const char *concur_tenant_key(agi_session_t *s)
+{
+    if (g_cluster_cfg.shortuid[0] != '\0')
+    {
+        return g_cluster_cfg.shortuid;
+    }
+    if (s->call->myCluster[0] != '\0')
+    {
+        return s->call->myCluster;
+    }
+    return "unknown";
+}
+
+static int concur_limit_hit(agi_session_t *s,
+                            const char *knob,
+                            const char *scope,
+                            const char *who,
+                            const char *direction,
+                            const char *category,
+                            const char *group_name,
+                            const char *limit_str)
+{
+    char setvar[64];
+    char countvar[96];
+    int limit;
+    int count;
+
+    if (limit_str == NULL || limit_str[0] == '\0')
+    {
+        return 0;
+    }
+    limit = atoi(limit_str);
+    if (limit <= 0)
+    {
+        return 0;
+    }
+
+    snprintf(setvar, sizeof(setvar), "GROUP(%s)", category);
+    agi_set_variable(s, setvar, (char *)group_name);
+    snprintf(countvar, sizeof(countvar), "GROUP_COUNT(%s@%s)", group_name, category);
+    agi_get_variable(s, countvar);
+    count = atoi(s->res->data);
+
+    if (count > limit)
+    {
+        snprintf(vmsg, sizeof(vmsg),
+                 "PBX3_CONCUR_LIMIT knob=%s scope=%s shortuid=%s limit=%d count=%d "
+                 "direction=%s channel=%s uniqueid=%s",
+                 knob, scope, who, limit, count, direction,
+                 s->call->channel, s->call->uniqueid);
+        agi_verbose(s, vmsg, 1);
+        /* So OutTrunk / OutRoute DIALSTATUS loops do not treat as congestion. */
+        agi_set_variable(s, "PBX3_CONCUR_REJECT", "1");
+        agi_set_variable(s, "DIALSTATUS", "BUSY");
+        agi_exec(s, "Playtones", "busy");
+        agi_exec(s, "Busy", "");
+        return 1;
+    }
+    return 0;
+}
+
+/* Ingress: tenant + instance maxin. */
+static int pbx3_concur_check_inbound(agi_session_t *s)
+{
+    const char *tkey = concur_tenant_key(s);
+    const char *iwho =
+        g_instance_concur.shortuid[0] != '\0' ? g_instance_concur.shortuid : "-";
+
+    if (concur_limit_hit(s, "maxin", "tenant", tkey, "in", "pbx3tin", tkey,
+                         g_cluster_cfg.maxin_str))
+    {
+        return 1;
+    }
+    if (concur_limit_hit(s, "maxin", "instance", iwho, "in", "pbx3in", "home",
+                         g_instance_concur.maxin_str))
+    {
+        return 1;
+    }
+    return 0;
+}
+
+/* OutVoip / OutTrunk: tenant maxout (chanmax fallback) + instance maxout. */
+static int pbx3_concur_check_outbound(agi_session_t *s)
+{
+    const char *tkey = concur_tenant_key(s);
+    const char *iwho =
+        g_instance_concur.shortuid[0] != '\0' ? g_instance_concur.shortuid : "-";
+    const char *tout = g_cluster_cfg.maxout_str;
+
+    if (tout[0] == '\0' && g_cluster_cfg.chanmax_str[0] != '\0')
+    {
+        tout = g_cluster_cfg.chanmax_str;
+    }
+
+    if (concur_limit_hit(s, "maxout", "tenant", tkey, "out", "pbx3tout", tkey, tout))
+    {
+        return 1;
+    }
+    if (concur_limit_hit(s, "maxout", "instance", iwho, "out", "pbx3out", "home",
+                         g_instance_concur.maxout_str))
+    {
+        return 1;
+    }
+    return 0;
+}
+
 // ChanSpy targets PJSIP/{shortuid} — channel names are never PJSIP/{pkey}.
 // Resolve only within the calling tenant (PARM_CLST). No cross-cluster pkey
 // fallback — that leaked spy onto other tenants sharing an extension number.
@@ -949,8 +1062,6 @@ void OutRoute(agi_session_t *s)
     char strategy[8] = {'\0'};
     char auth[4] = {'\0'};
     char setlast[64] = "GLOBAL(";
-    char clusterGroup[64] = {'\0'};
-    char clusterCount[64] = {'\0'};
     char extenAbstimeout[16] = {'\0'};
     char dfbuf[640] = {'\0'};
     int i;
@@ -1001,24 +1112,7 @@ void OutRoute(agi_session_t *s)
     // now we can set the final timeout for the call
     snprintf(abstimeout, sizeof(abstimeout), "TIMEOUT(absolute)=%i", abstimeint);
 
-    /*
-     * if a chanmax value is set in the cluster then check it.  If not then
-     * leave the check to the global voipmax if this is a voip call
-     *
-     */
-    if (g_cluster_cfg.chanmax_str[0] != '\0')
-    {
-        snprintf(clusterGroup, sizeof(clusterGroup), "GROUP(%s)", s->call->myCluster);
-        agi_set_variable(s, clusterGroup, s->call->myCluster);
-        snprintf(clusterCount, sizeof(clusterCount), "GROUP_COUNT(%s)", s->call->myCluster);
-        agi_get_variable(s, clusterCount); // clusterCount is the number of active outbound calls
-        if (atoi(s->res->data) > atoi(g_cluster_cfg.chanmax_str))
-        {
-            agi_exec(s, "Playtones", "busy");
-            agi_exec(s, "Busy", "");
-            return;
-        }
-    }
+    /* Outbound maxout/maxin checked in OutVoip (shared with OutTrunk). */
 
     sqlQueryBind1("SELECT auth,path1,path2,path3,path4,alternate,strategy FROM Route WHERE pkey=?", PARM_KEY);
 
@@ -1166,6 +1260,11 @@ void OutTrunk(agi_session_t *s, char *key)
     if (!strcmp(active, "YES"))
     {
         OutVoip(s, key);
+        agi_get_variable(s, "PBX3_CONCUR_REJECT");
+        if (!strcmp(s->res->data, "1"))
+        {
+            return; /* already Busy + log from concur check */
+        }
         agi_get_variable(s, "DIALSTATUS"); // DIALSTATUS is the status of the call - answered, busy, cancelled
         if (!strcmp(s->res->data, "ANSWER"))
         {
@@ -1503,6 +1602,12 @@ void OutVoip(agi_session_t *s, char *key)
     char preSel[MAX_PRESEL_LEN] = {'\0'};
     char recRet[8] = {'\0'};
 
+    /* Tenant + instance maxout before any trunk Dial (also covers OutTrunk). */
+    if (pbx3_concur_check_outbound(s))
+    {
+        return;
+    }
+
     /* trunks.description (not legacy "desc") — peername falls back to description if blank. */
     sqlQueryBind1("SELECT username,peername,callprogress,description,transform,match,technology FROM trunks WHERE pkey=?", key);
     strlcpy(username, rescols[0], sizeof(username));
@@ -1577,19 +1682,11 @@ void OutVoip(agi_session_t *s, char *key)
         }
     }
 
-    agi_set_variable(s, "GROUP()", "OUTBOUND_GROUP");
-    agi_get_variable(s, "GROUP_COUNT()"); // GROUP_COUNT() is the number of active outbound calls
-    if (atoi(s->res->data) <= atoi(g_cluster_cfg.voipmax_str))
-    {
-        strlcpy(recRet, SetRecord(s, s->call->callerid, "Outbound"), sizeof(recRet));
-        strlcat(dialString, recRet, sizeof(dialString));
-        //  Abs timeout
-        agi_exec(s, "Set", abstimeout);
-        //  acounting
-        // setOutbound_cdr_userfield();
-        // Dial
-        agi_exec(s, "Dial", dialString);
-    }
+    strlcpy(recRet, SetRecord(s, s->call->callerid, "Outbound"), sizeof(recRet));
+    strlcat(dialString, recRet, sizeof(dialString));
+    /* Abs timeout */
+    agi_exec(s, "Set", abstimeout);
+    agi_exec(s, "Dial", dialString);
 }
 
 void LepDial(agi_session_t *s)
@@ -2564,20 +2661,10 @@ void Ingress(agi_session_t *s)
     char clicluster[MAX_CLUSTER_LEN] = {'\0'};
     char setcdrcmduser[64] = "CDR(userfield)=";
 
-    /*
-     *  check if we are at max inbound channels
-     */
-    if (g_cluster_cfg.maxin_str[0] != '\0')
+    /* Tenant + instance maxin (GROUP set/count matched; shortuid-keyed). */
+    if (pbx3_concur_check_inbound(s))
     {
-        agi_set_variable(s, "GROUP(inbound)", "inbound");
-        agi_get_variable(s, "GROUP_COUNT(inbound)"); // GROUP_COUNT(inbound) is the number of active inbound calls
-
-        if (atoi(s->res->data) > atoi(g_cluster_cfg.maxin_str))
-        {
-            agi_exec(s, "Playtones", "busy");
-            agi_exec(s, "Busy", "");
-            return;
-        }
+        return;
     }
 
     // set the dialled number (DDI) in the CDR userfield

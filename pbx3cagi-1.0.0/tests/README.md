@@ -83,6 +83,9 @@ Scenarios use **`astdb.json`** per scenario (`family/key` → value). See `fixtu
 | `spy-default-denied` | `*68*1101` + patch `spy_pass=3333` | No Authenticate / ChanSpy (fail-closed) |
 | `spy-ok` | `*68*1101` + patch `spy_pass=9911` | Authenticate then ChanSpy |
 | `spy-cross-tenant-denied` | `*68*1000` from testtn01; 1000 only on testtn02 | Authenticate then `pbx-invalid`; no ChanSpy |
+| `concur-maxin-tenant-busy` | Ingress + `maxin=1` + count 2 | `PBX3_CONCUR_LIMIT` tenant + Busy |
+| `concur-maxin-instance-busy` | Ingress + instance `maxin=1` | `PBX3_CONCUR_LIMIT` instance + Busy |
+| `concur-maxout-tenant-busy` | OutTrunk + `maxout=1` + count 2 | `PBX3_CONCUR_LIMIT` tenant out + Busy; no Dial |
 
 Optional per-scenario: **`variables.json`** (GET VARIABLE replies), **`env.json`** (process env), **`seed_patch.sql`**.
 

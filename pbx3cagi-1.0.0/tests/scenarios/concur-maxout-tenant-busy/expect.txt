@@ -1,0 +1,7 @@
+must SET VARIABLE GROUP(pbx3tout)
+must GET VARIABLE GROUP_COUNT(testtn01@pbx3tout)
+must PBX3_CONCUR_LIMIT knob=maxout scope=tenant
+must EXEC Busy
+must-not EXEC Dial
+must-not EXEC Congestion
+exit 0
