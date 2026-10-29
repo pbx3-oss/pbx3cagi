@@ -1,0 +1,4 @@
+must SET VARIABLE PBX3_DIAL "PJSIP/testex01/sip:testex01@testtn01.pbx3.local,,cktT"
+must-not EXEC Dial
+must-not EXEC Voicemail
+exit 0

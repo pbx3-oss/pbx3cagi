@@ -68,6 +68,7 @@ Scenarios use **`astdb.json`** per scenario (`family/key` → value). See `fixtu
 | `lepdial-fleet` | LepDial + `PBX3_FLEET_MODE=1` | `PBX3_DIAL` includes `sip:suid@tenant.fqdn` |
 | `lepdial-fleet-sitedial` | LepDial + fleet + `PBX3_SITE_DIAL=YES` | local `PJSIP/suid` only (no FQDN hairpin) |
 | `dial-queue-predial` | Dial … queue | Phase E: `PBX3_DIAL` = `PJSIP/suid,,`; no `EXEC Dial` |
+| `dial-queue-predial-fleet` | Dial … queue + `PBX3_FLEET_MODE=1` | fleet FQDN `PJSIP/suid/sip:suid@fqdn,,cktT` (same AoR as LepDial; offline VM-steal fixed in GenAst `SbcDomainRoute`) |
 | `postdial-noanswer-vm` | PostDial + `DIALSTATUS=NOANSWER` | `EXEC Voicemail` |
 | `postdial-answer-noop` | PostDial + `DIALSTATUS=ANSWER` | no Voicemail / Dial / Playback |
 | `sched-open-legacy` | Ingress | No profile → openroute |

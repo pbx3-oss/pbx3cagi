@@ -2000,6 +2000,11 @@ void PrepDial(agi_session_t *s, char *number, char *type, char *twin, char *vmbo
  *  no Contact — do NOT Dial sip:user@tenant.fqdn again (loops). Local
  *  Dial(PJSIP/shortuid) → CHANUNAVAIL → PostDial → voicemail/CFBS.
  *  Carrier DID Ingress does not set SITE_DIAL; first FQDN Dial still runs.
+ *
+ *  Queue members also use fleet FQDN Dial (local AOR Dial alone is CHANUNAVAIL
+ *  for desks whose Contact is the SBC). Offline-member VM-steal is stopped in
+ *  GenAst SbcDomainRoute (fixed-width _XXX/_XXXX/_XXXXX only — shortuid
+ *  hairpins do not match, so Queue does not CONNECT into PostDial Voicemail).
  */
     {
         char ring_ep[80] = {'\0'};
