@@ -174,6 +174,7 @@ static const agi_cmd_entry_t agi_cmd_table[] = {
     { 7, "OutQmt", OutQmt },
     { 8, "PostDial", PostDial },
     { 9, "PrefixDial", cmd_PrefixDial },
+    { 10, "InNormalize", InNormalize },
     { 18, NULL, CFVMailSet },
     { 19, NULL, CFVMailSet },
     { 20, NULL, CFVMailToggle },
@@ -2645,6 +2646,43 @@ static int clid_block_should_reject(const char *cluster, const char *callerid)
         return 1;
     }
     return 0;
+}
+
+/*
+ * Solo / direct trunk: apply trunks.inbound_transform to the dialled R-URI
+ * userpart, then dialplan Goto(Ingress,${EXTEN},1). Fleet Egress leaves the
+ * column empty (SBC already emits +E.164).
+ */
+void InNormalize(agi_session_t *s)
+{
+    char transform[MAX_TRANSFORM_LIST_LEN] = {'\0'};
+    char number[MAX_EXT_LEN] = {'\0'};
+    char *key;
+
+    DebugFunctionTrace(__FUNCTION__);
+
+    key = PARM_KEY;
+    if (key == NULL || key[0] == '\0')
+    {
+        return;
+    }
+
+    strlcpy(number, s->call->extension, sizeof(number));
+    strlcpy(transform,
+            sqlQueryBind1("SELECT inbound_transform FROM trunks WHERE pkey=?", key),
+            sizeof(transform));
+
+    if (transform[0] != '\0')
+    {
+        /* mangle_number strtok-mutates transformList — pass our buffer. */
+        mangle_number(number, sizeof(number), s->call->extension, NULL, transform);
+    }
+
+    if (number[0] != '\0')
+    {
+        strlcpy(s->call->extension, number, sizeof(s->call->extension));
+        agi_set_extension(s, number);
+    }
 }
 
 void Ingress(agi_session_t *s)

@@ -48,6 +48,16 @@ int main(void)
     mangle_number(out, sizeof(out), "00441234567890", NULL, transform);
     expect_streq("mangle UK 00:+ first", out, "+441234567890");
 
+    /* Solo inbound: Brindley NSN → +E.164 (InNormalize / inbound_transform). */
+    strcpy(transform, "0:+44");
+    mangle_number(out, sizeof(out), "02083270900", NULL, transform);
+    expect_streq("inbound Brindley 0:+44", out, "+442083270900");
+
+    /* Already +E.164: no left match → unchanged (idempotent on + keys). */
+    strcpy(transform, "0:+44");
+    mangle_number(out, sizeof(out), "+442083270900", NULL, transform);
+    expect_streq("inbound already +E.164", out, "+442083270900");
+
     strcpy(transform, "9:");
     mangle_number(out, sizeof(out), "91234", "9", transform);
     expect_streq("mangle preselect+strip", out, "1234");

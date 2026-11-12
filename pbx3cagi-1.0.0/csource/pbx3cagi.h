@@ -188,6 +188,8 @@ void AgentUnpause(agi_session_t *s);
 void ChanSpyWhisper(agi_session_t *s);
 void ChanSpy(agi_session_t *s);
 void Ingress(agi_session_t *s);
+/** Solo trunk inbound DID normalize (trunks.inbound_transform) before Goto Ingress. */
+void InNormalize(agi_session_t *s);
 void CheckState(agi_session_t *s, char* remotenum);
 char *CheckTime(agi_session_t *s, char *cluster);
 void IVR(agi_session_t *s, char *ivrname);
